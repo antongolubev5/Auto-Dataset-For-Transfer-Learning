@@ -117,6 +117,7 @@ def main():
     print(tokens)
     print([token for token in tokens if token in list(entities_with_sentiments.keys())])
 
+    # разметка и выделение
     # mkdir_labeled_texts(directory_path, corpus_name, 'labeled_items')
     # selection_entities(directory_path, corpus_name, entities_with_sentiments)
 
