@@ -12,6 +12,7 @@ from spacy.lang.ru import Russian
 
 
 # from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
+# import spacy_russian_tokenizer
 
 
 def spacy_tokenizer(text, lemm: bool):
@@ -24,8 +25,10 @@ def spacy_tokenizer(text, lemm: bool):
 
     # ВЗЯТЬ РУССКИЙ ТОКЕНИЗАТОР https://github.com/antongolubev5/spacy_russian_tokenizer
     # nlp = Russian()
-    # russian_tokenizer = RussianTokenizer(nlp, MERGE_PATTERNS)
+    # doc = nlp(text)
+    # russian_tokenizer = spacy_russian_tokenizer.RussianTokenizer(nlp, spacy_russian_tokenizer.MERGE_PATTERNS)
     # nlp.add_pipe(russian_tokenizer, name='russian_tokenizer')
+    # doc = nlp(text)
 
     text = [token.lemma_ for token in doc] if lemm else text
 
@@ -49,9 +52,9 @@ def mkdir_labeled_texts(directory_path, corpus_name, new_dir_name):
                 os.mkdir(os.path.join(directory_path, corpus_name, month, day, utf, new_dir_name))
 
 
-def selection_entities(directory_path, corpus_name, entities_with_sentiments):
+def searching_entities_in_corpus(directory_path, corpus_name, entities_with_sentiments):
     """
-    выделение сущностей из текстов.
+    поиск тональных сущностей в текстах.
     сущности = размеченные pos/neg слова из русентилекс
     каждый файл из папки разметить и перекинуть в labeles_texts с соотв названием файла + labeled
     :return:
@@ -85,6 +88,58 @@ def selection_entities(directory_path, corpus_name, entities_with_sentiments):
                     f.close
 
 
+def creating_entities_vocab(directory_path, files: list):
+    """
+    выделение из словаря русентилекс тональных слов (positive/negative)
+    :param directory_path: путь к файлам
+    :param files: список файлов, из которых необходимо достать слова
+    :return: словарь тональных слов
+    """
+
+    entities_with_sentiments = {}
+
+    for i in range(len(files)):
+        files[i] = open(os.path.join(directory_path, files[i]), 'r')
+
+    for file in files:
+        for line in file:
+            line_info = line.strip().split(', ')
+            word = line_info[0]
+            if not (word in entities_with_sentiments.keys()):
+                entities_with_sentiments[word] = line_info[3]
+    file.close()
+
+    return entities_with_sentiments
+
+
+def searching_contexts_by_entities():
+    """
+    попытка выделения персональных сущностей из имеющейся коллекции
+    :return:
+    """
+
+    pass
+
+
+def searching_personal_entities(directory_path, file_from, file_to):
+    """
+    поиск сущностей, которыми можно охарактеризовать людей и запись их в другой файл
+    :param directory_path: путь до файлов
+    :param file_from: откуда брать сущности
+    :param file_to: куда перекладывать сущности
+    :return:
+    """
+
+    # проходим по строкам, если слово не нужно, то удаляем строку
+    file_from = open(os.path.join(directory_path, file_from), 'r+')
+    file_to = open(os.path.join(directory_path, file_to), 'w')
+
+    for line in file_from:
+        print(line.strip())
+        if input() == 'y':
+            file_to.write(line)
+
+
 def main():
     """
     нужно из словаря тональных существительных вытащить те, которыы описывают людей
@@ -94,32 +149,20 @@ def main():
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source_test3'
 
-    nouns_pos = open(os.path.join(directory_path, 'nouns_pos'), 'r')
-    nouns_neg = open(os.path.join(directory_path, 'nouns_neg'), 'r')
-    adjs_pos = open(os.path.join(directory_path, 'adjs_pos'), 'r')
-    adjs_neg = open(os.path.join(directory_path, 'adjs_neg'), 'r')
+    # пробуем вытащить персональные сущ
+    # searching_personal_entities(directory_path, 'nouns_neg', 'nouns_person_neg')
 
-    entities_with_sentiments = {}
+    # entities_with_sentiments = creating_entities_vocab(directory_path,
+    #                                                    ['adjs_neg', 'adjs_neg', 'nouns_neg', 'nouns_pos'])
 
-    # словарь слов из rusentilex: key=сущность, value=тональность
-    for file in [nouns_pos, nouns_neg, adjs_pos, adjs_neg]:
-        for line in file:
-            line_info = line.strip().split(', ')
-            word = line_info[0]
-            if not (word in entities_with_sentiments.keys()):
-                entities_with_sentiments[word] = line_info[3]
-
-    for file in [nouns_pos, nouns_neg, adjs_pos, adjs_neg]:
-        file.close()
+    # разметка и выделение
+    # mkdir_labeled_texts(directory_path, corpus_name, 'labeled_items')
+    # searching_entities_in_corpus(directory_path, corpus_name, entities_with_sentiments)
 
     text = 'инженер-программист Владимир Путин устроил самый настоящий разнос кое-какому губернатору Московской области Борису Громову'
     tokens = spacy_tokenizer(text, True)
     print(tokens)
     print([token for token in tokens if token in list(entities_with_sentiments.keys())])
-
-    # разметка и выделение
-    # mkdir_labeled_texts(directory_path, corpus_name, 'labeled_items')
-    # selection_entities(directory_path, corpus_name, entities_with_sentiments)
 
 
 if __name__ == '__main__':
