@@ -131,37 +131,41 @@ def creating_entities_vocab(directory_path, files: list):
 def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: dict, nlp):
     """
     по имеющимся сущностям набираем из корпуса выборку контекстов
+    :param nlp: модель для разбиения текста на предложения
     :param entities_vocab:
     :param directory_path:
     :param corpus_name:
     :return:
     """
 
-    contexts_for_entities = open(os.path.join(directory_path, 'contexts_for_labeled_entities'), 'w')
+    contexts_for_entities = open(os.path.join(directory_path, 'contexts_for_labeled_entities_1'), 'w')
     list_entities_vocab_keys = list(entities_vocab.keys())
 
     # пробегаем по всем текстам корпуса и выискиваем предложения, содержащие размеченные слова из словаря
-    for month in os.listdir(os.path.join(directory_path, corpus_name)):
-        for day in os.listdir(os.path.join(directory_path, corpus_name, month)):
-            for utf in os.listdir(os.path.join(directory_path, corpus_name, month, day)):
-                for item in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'items')):
-                    tree = ET.parse(
-                        os.path.join(os.path.join(directory_path, corpus_name, month, day, utf, 'items', item)))
-                    text = tree.getroot()[0].text
-                    # text_tok = spacy_tokenizer(text, True)
-                    # text_tok = mystem_tokenizer(text)
-                    # if any(word in list_entities_vocab_keys for word in text_tok):
-                    #     print(text)
-                    print(text)
-                for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
-                    f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
-                    for sent in text2sentences(f.read(), nlp):
-                        # sent_tok = spacy_tokenizer(sent, True)
-                        # sent_tok = mystem_tokenizer(sent)
-                        # if any(word in list_entities_vocab_keys for word in sent_tok):
-                        #     print(sent)
-                        print(sent)
-                    f.close()
+    # for month in os.listdir(os.path.join(directory_path, corpus_name)):
+    month = '201101'
+    for day in os.listdir(os.path.join(directory_path, corpus_name, month)):
+        for utf in os.listdir(os.path.join(directory_path, corpus_name, month, day)):
+            for item in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'items')):
+                tree = ET.parse(
+                    os.path.join(os.path.join(directory_path, corpus_name, month, day, utf, 'items', item)))
+                text = tree.getroot()[0].text
+                # text_tok = spacy_tokenizer(text, True)
+                # text_tok = mystem_tokenizer(text)
+                # if any(word in list_entities_vocab_keys for word in text_tok):
+                #     print(text)
+                # print(text)
+                contexts_for_entities.write(text+'\n')
+            for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
+                f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
+                for sent in text2sentences(f.read(), nlp):
+                    # sent_tok = spacy_tokenizer(sent, True)
+                    # sent_tok = mystem_tokenizer(sent)
+                    # if any(word in list_entities_vocab_keys for word in sent_tok):
+                    #     print(sent)
+                    # print(sent)
+                    contexts_for_entities.write(sent+'\n')
+                f.close()
 
 
 def searching_personal_entities(directory_path, file_from, file_to):
@@ -204,7 +208,7 @@ def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
-    corpus_name = 'Rambler_source_test3'
+    corpus_name = 'Rambler_source'
 
     # print(mystem_tokenizer(
     #     "инженер-программист Владимир Путин устроил самый настоящий разнос кое-какому губернатору Московской области Борису Громову. Не ветра, ни какого-то урагана!"))
