@@ -5,10 +5,26 @@ import xml.etree.ElementTree as ET
 from spacy.lang.ru import Russian
 from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
 import time
+from pymystem3 import Mystem
+from string import punctuation
 
 # import ru2e
 
 spacy.prefer_gpu()
+
+
+def mystem_tokenizer(text):
+    """
+    токенизатор на основе mystem
+    :param text:
+    :return:
+    """
+
+    mystem = Mystem()
+    tokens = mystem.lemmatize(text.lower())
+    tokens = [token for token in tokens if token != " " and token.strip() not in punctuation]
+
+    return tokens
 
 
 def spacy_tokenizer(text, lemm: bool):
@@ -112,7 +128,7 @@ def creating_entities_vocab(directory_path, files: list):
     return entities_with_sentiments
 
 
-def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: dict):
+def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: dict, nlp):
     """
     по имеющимся сущностям набираем из корпуса выборку контекстов
     :param entities_vocab:
@@ -122,7 +138,7 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
     """
 
     contexts_for_entities = open(os.path.join(directory_path, 'contexts_for_labeled_entities'), 'w')
-    # entities_vocab = creating_entities_vocab(directory_path, ['nouns_person_neg'])
+    list_entities_vocab_keys = list(entities_vocab.keys())
 
     # пробегаем по всем текстам корпуса и выискиваем предложения, содержащие размеченные слова из словаря
     for month in os.listdir(os.path.join(directory_path, corpus_name)):
@@ -132,15 +148,19 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
                     tree = ET.parse(
                         os.path.join(os.path.join(directory_path, corpus_name, month, day, utf, 'items', item)))
                     text = tree.getroot()[0].text
-                    if any(word in list(entities_vocab.keys()) for word in spacy_tokenizer(text, True)):
-                        print(text)
-
+                    # text_tok = spacy_tokenizer(text, True)
+                    # text_tok = mystem_tokenizer(text)
+                    # if any(word in list_entities_vocab_keys for word in text_tok):
+                    #     print(text)
+                    print(text)
                 for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
                     f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
-                    # выбираем предложения в которых есть интересующие нас слова
-                    for sent in text2sentences(f.read()):
-                        if any(word in list(entities_vocab.keys()) for word in spacy_tokenizer(sent, True)):
-                            print(sent)
+                    for sent in text2sentences(f.read(), nlp):
+                        # sent_tok = spacy_tokenizer(sent, True)
+                        # sent_tok = mystem_tokenizer(sent)
+                        # if any(word in list_entities_vocab_keys for word in sent_tok):
+                        #     print(sent)
+                        print(sent)
                     f.close()
 
 
@@ -162,13 +182,13 @@ def searching_personal_entities(directory_path, file_from, file_to):
             file_to.write(line)
 
 
-def text2sentences(text):
+def text2sentences(text, nlp):
     """
     разделение текста на предложения
     """
 
-    nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
-    nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
+    # nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
+    # nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
     doc = nlp(text)
     sentences = [sent.string.strip() for sent in doc.sents]
 
@@ -186,18 +206,11 @@ def main():
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source_test3'
 
-    # print(spacy_tokenizer(
-    #     "инженер-программист Владимир Путин устроил самый настоящий разнос кое-какому губернатору Московской области Борису Громову. Не ветра, ни какого-то урагана!",
-    #     True))
-
-    # f = open(
-    #     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source_test3/201101/20110101/20110101000749_utf/texts/22655843.txt',
-    #     'r')
-    # text = f.read()
-    # print(text2sentences(text))
+    # print(mystem_tokenizer(
+    #     "инженер-программист Владимир Путин устроил самый настоящий разнос кое-какому губернатору Московской области Борису Громову. Не ветра, ни какого-то урагана!"))
 
     # пробуем вытащить персональные сущ
-    # searching_personal_entities(directory_path, 'nouns_neg', 'nouns_person_neg')
+    # searching_personal_entities(directory_path, 'nouns_pos', 'nouns_person_pos')
 
     # entities_with_sentiments = creating_entities_vocab(directory_path,
     #                                                    ['adjs_neg', 'adjs_neg', 'nouns_neg', 'nouns_pos'])
@@ -207,8 +220,20 @@ def main():
     # searching_entities_in_corpus(directory_path, corpus_name, entities_with_sentiments)
 
     # поиск контекстов для существительных с отрицательной окраской
-    entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg_test'])
-    searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments)
+    # entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
+    # searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments)
+
+    nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
+    nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
+
+    entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
+    searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments, nlp)
+
+    # fi = open(os.path.join(directory_path, 'Rambler_source_test3/201101/20110101/20110101000749_utf/texts/22655849.txt'), 'r')
+    # text = fi.read()
+    # # print(mystem_tokenizer(text))
+    # print(spacy_tokenizer(text, True))
+    # fi.close()
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
