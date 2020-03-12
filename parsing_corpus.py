@@ -13,6 +13,29 @@ from string import punctuation
 spacy.prefer_gpu()
 
 
+def regTokenize(text):
+    """
+    вроде как быстрый токенизатор?
+    :param text:
+    :return:
+    """
+    WORD = re.compile(r'\w+')
+    words = WORD.findall(text)
+    # return ' '.join(words)
+    return words
+
+
+def myany(text: list, vocab: list):
+    """
+    проверка на наличие слов из словаря в строке
+    """
+
+    for word in text:
+        if word in vocab:
+            return True
+    return False
+
+
 def mystem_tokenizer(text):
     """
     токенизатор на основе mystem
@@ -22,9 +45,11 @@ def mystem_tokenizer(text):
 
     mystem = Mystem()
     tokens = mystem.lemmatize(text.lower())
-    tokens = [token for token in tokens if token != " " and token.strip() not in punctuation]
+    punc_list = ' –!"@#$%^&*()*+_,.\:;<>=?[]{}|~`/«»—' + '0123456789'
+    tokens = [token for token in tokens if token != " " and token.strip() not in set(punctuation + punc_list)]
 
-    return tokens
+    # return tokens
+    return ' '.join(tokens)
 
 
 def spacy_tokenizer(text, lemm: bool):
@@ -57,7 +82,8 @@ def spacy_tokenizer(text, lemm: bool):
         if not (text[i] in punc_list):
             output.append(text[i])
 
-    return output
+    # return output
+    return ' '.join(output)
 
 
 def mkdir_labeled_texts(directory_path, corpus_name, new_dir_name):
@@ -136,6 +162,8 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
     :param directory_path:
     :param corpus_name:
     :return:
+    ================================================================
+    сделать try except!!!! чтоб не ломалась программа из-за отсутствия файла
     """
 
     contexts_for_entities = open(os.path.join(directory_path, 'contexts_for_labeled_entities_1'), 'w')
@@ -146,26 +174,27 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
     month = '201101'
     for day in os.listdir(os.path.join(directory_path, corpus_name, month)):
         for utf in os.listdir(os.path.join(directory_path, corpus_name, month, day)):
-            for item in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'items')):
-                tree = ET.parse(
-                    os.path.join(os.path.join(directory_path, corpus_name, month, day, utf, 'items', item)))
-                text = tree.getroot()[0].text
-                # text_tok = spacy_tokenizer(text, True)
-                # text_tok = mystem_tokenizer(text)
-                # if any(word in list_entities_vocab_keys for word in text_tok):
-                #     print(text)
-                # print(text)
-                contexts_for_entities.write(text+'\n')
-            for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
-                f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
-                for sent in text2sentences(f.read(), nlp):
+            if len(os.listdir(os.path.join(directory_path, corpus_name, month, day, utf))) > 0:
+                for item in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'items')):
+                    tree = ET.parse(
+                        os.path.join(os.path.join(directory_path, corpus_name, month, day, utf, 'items', item)))
+                    text = tree.getroot()[0].text
+                    # text_tok = spacy_tokenizer(text, True)
+                    # text_tok = mystem_tokenizer(text)
+                    # if any(word in list_entities_vocab_keys for word in text_tok):
+                    #     print(text)
+                    print(text)
+                    # contexts_for_entities.write(text+'\n')
+                for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
+                    f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
                     # sent_tok = spacy_tokenizer(sent, True)
                     # sent_tok = mystem_tokenizer(sent)
                     # if any(word in list_entities_vocab_keys for word in sent_tok):
                     #     print(sent)
-                    # print(sent)
-                    contexts_for_entities.write(sent+'\n')
-                f.close()
+                    # contexts_for_entities.write(sent+'\n')
+                    for sent in text2sentences(f.read(), nlp):
+                        print(sent)
+                    f.close()
 
 
 def searching_personal_entities(directory_path, file_from, file_to):
@@ -208,7 +237,7 @@ def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
-    corpus_name = 'Rambler_source'
+    corpus_name = 'Rambler_source_test3'
 
     # print(mystem_tokenizer(
     #     "инженер-программист Владимир Путин устроил самый настоящий разнос кое-какому губернатору Московской области Борису Громову. Не ветра, ни какого-то урагана!"))
@@ -227,17 +256,32 @@ def main():
     # entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
     # searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments)
 
-    nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
-    nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
-
-    entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
-    searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments, nlp)
+    # nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
+    # nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
+    #
+    # entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
+    # searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments, nlp)
 
     # fi = open(os.path.join(directory_path, 'Rambler_source_test3/201101/20110101/20110101000749_utf/texts/22655849.txt'), 'r')
     # text = fi.read()
     # # print(mystem_tokenizer(text))
     # print(spacy_tokenizer(text, True))
     # fi.close()
+
+    vocab = []
+    vocab_f = open(os.path.join(directory_path, 'nouns_person_neg'), 'r')
+    for line in vocab_f:
+        vocab.append(line.split(' ')[0])
+
+    fi = open(os.path.join(directory_path, 'contexts_for_labeled_entities_2'), 'r')
+    fi_to = open(os.path.join(directory_path, 'testing_parser_results'), 'w')
+
+    for line in fi:
+        if myany(regTokenize(line), vocab):
+            fi_to.write(line.strip() + '===' + ' '.join(regTokenize(line)) + '\n')
+            print(line.strip() + '===' + ' '.join(regTokenize(line)) + '\n')
+
+    fi_to.close()
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
