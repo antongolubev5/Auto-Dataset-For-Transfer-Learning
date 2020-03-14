@@ -82,8 +82,7 @@ def spacy_tokenizer(text, lemm: bool):
         if not (text[i] in punc_list):
             output.append(text[i])
 
-    # return output
-    return ' '.join(output)
+    return output
 
 
 def mkdir_labeled_texts(directory_path, corpus_name, new_dir_name):
@@ -228,6 +227,43 @@ def text2sentences(text, nlp):
     return sentences
 
 
+def searching_contexts(directory_path, entities_vocabs: list, sentences_file, contexts_file, sentence_volume):
+    """
+    поиск тональных контекстов cреди предложений корпуса
+    :param directory_path:
+    :param entities_vocabs: список из названий файлов, в которых лежат тональные слова
+    :param sentences_file: файл с предложениями из корпуса
+    :param contexts_file: файл, в который будут записаны контексты
+    :param sentence_volume: сколько предложений из корпуса рассматривать [0:vol]
+    """
+
+    vocab = {}
+    vocab_neg = open(os.path.join(directory_path, entities_vocabs[0]), 'r')
+    vocab_pos = open(os.path.join(directory_path, entities_vocabs[1]), 'r')
+
+    for line in vocab_pos:
+        line_info = line.split(', ')
+        vocab[line_info[0]] = line_info[3]
+
+    for line in vocab_neg:
+        line_info = line.split(', ')
+        vocab[line_info[0]] = line_info[3]
+
+    list_entities_vocab_keys = list(vocab.keys())
+    contexts = open(os.path.join(directory_path, contexts_file), 'w')
+    cnt = 0
+
+    with open(os.path.join(directory_path, sentences_file)) as myfile:
+        firstNlines = myfile.readlines()[0:sentence_volume]
+
+    for line in firstNlines:
+        line_tok = spacy_tokenizer(line, True)
+        if any(word in list_entities_vocab_keys for word in line_tok):
+            cnt += 1
+            contexts.write(line.strip() + '===' + ' '.join(line_tok))
+            print(cnt, line.strip() + '===' + ' '.join(line_tok))
+
+
 def main():
     """
     нужно из словаря тональных существительных вытащить те, которые описывают людей
@@ -267,21 +303,6 @@ def main():
     # # print(mystem_tokenizer(text))
     # print(spacy_tokenizer(text, True))
     # fi.close()
-
-    vocab = []
-    vocab_f = open(os.path.join(directory_path, 'nouns_person_neg'), 'r')
-    for line in vocab_f:
-        vocab.append(line.split(' ')[0])
-
-    fi = open(os.path.join(directory_path, 'contexts_for_labeled_entities_2'), 'r')
-    fi_to = open(os.path.join(directory_path, 'testing_parser_results'), 'w')
-
-    for line in fi:
-        if myany(regTokenize(line), vocab):
-            fi_to.write(line.strip() + '===' + ' '.join(regTokenize(line)) + '\n')
-            print(line.strip() + '===' + ' '.join(regTokenize(line)) + '\n')
-
-    fi_to.close()
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
