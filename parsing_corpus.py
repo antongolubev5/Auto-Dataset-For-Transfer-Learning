@@ -57,7 +57,8 @@ def spacy_tokenizer(text, lemm: bool):
     spacy_russian_tokenizer --- токенизация
     spacy_ru2 --- лемматизация (как параметр)
     стоп слова?
-    не всегда правильно работает, надо разбираться с ru2e
+    не всегда правильно работает (часто плохие леммы), надо разбираться -
+    в репо написано использовать ru2e, но не работает
     """
 
     # nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
@@ -253,56 +254,104 @@ def searching_contexts(directory_path, entities_vocabs: list, sentences_file, co
     contexts = open(os.path.join(directory_path, contexts_file), 'w')
     cnt = 0
 
-    with open(os.path.join(directory_path, sentences_file)) as myfile:
-        firstNlines = myfile.readlines()[0:sentence_volume]
+    with open(os.path.join(directory_path, sentences_file), 'r') as corpus_sentences:
+        firstNlines = corpus_sentences.readlines()[sentence_volume:]
+
+    cnt = 1
 
     for line in firstNlines:
+        print(cnt, '/', len(firstNlines), ' = ', round(cnt / len(firstNlines) * 100, 2), '%...')
         line_tok = spacy_tokenizer(line, True)
         if any(word in list_entities_vocab_keys for word in line_tok):
             cnt += 1
             contexts.write(line.strip() + '===' + ' '.join(line_tok))
             print(cnt, line.strip() + '===' + ' '.join(line_tok))
+        cnt += 1
+
+    for file in [vocab_neg, vocab_pos, contexts, corpus_sentences]:
+        file.close()
+
+
+def check_tones(text: list, vocab: dict):
+    """
+    определение тональности предложения
+    отбрасывание мультитональных предложений
+    вывод тональных слов
+    1 = good, -1 = bad, 0 = mixed, -10 = trash
+    """
+
+    bad = False
+    good = False
+    bad_words = []
+    good_words = []
+
+    for word in text:
+        if word in vocab.keys():
+            if vocab[word] == 'positive':
+                good = True
+                if word not in good_words:
+                    good_words.append(word)
+            else:
+                bad = True
+                if word not in bad_words:
+                    bad_words.append(word)
+            if good and bad:
+                return 0, good_words + bad_words
+
+    if good:
+        return 1, good_words
+
+    if bad:
+        return -1, bad_words
+
+    return -10, []
+
+
+def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts, negative_contexts):
+    """
+    разделение имеющихся контекстов на 2 позитивные и негативные
+    смешанные контексты выбрасываются
+    :param directory_path: путь
+    :param entities_vocab: словарь тональных сущностей
+    :param contexts: имя файла, в котором лежат все контексты
+    :param positive_contexts: имя файла, в который записываем + контексты
+    :param negative_contexts: имя файла, в который записываем - контексты
+    :return:
+    """
+
+    contexts = open(os.path.join(directory_path, contexts))
+    positive_contexts = open(os.path.join(directory_path, positive_contexts), 'w')
+    negative_contexts = open(os.path.join(directory_path, negative_contexts), 'w')
+    cnt = 1
+
+    for line in contexts:
+        print(cnt, '/', 88234, ' = ', round(cnt / 88234 * 100, 2), '%...')
+        line_text = line.split('===')[0]
+        line_tok = line.split('===')[1].strip()
+        flag, lst = check_tones(line_tok.split(" "), entities_vocab)
+
+        if flag == 1:
+            positive_contexts.write(line_text + '===' + line_tok + '===' + ' '.join(lst) + '===' + '1' + '\n')
+        elif flag == -1:
+            negative_contexts.write(line_text + '===' + line_tok + '===' + ' '.join(lst) + '===' + '-1' + '\n')
+        else:
+            print(line_text)
+
+        cnt += 1
+
+    for file in [contexts, positive_contexts, negative_contexts]:
+        file.close()
 
 
 def main():
-    """
-    нужно из словаря тональных существительных вытащить те, которые описывают людей
-    и набрать выборку - если встретилось подобное слово - то контекст негативный
-    """
-
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source_test3'
 
-    # print(mystem_tokenizer(
-    #     "инженер-программист Владимир Путин устроил самый настоящий разнос кое-какому губернатору Московской области Борису Громову. Не ветра, ни какого-то урагана!"))
-
-    # пробуем вытащить персональные сущ
-    # searching_personal_entities(directory_path, 'nouns_pos', 'nouns_person_pos')
-
-    # entities_with_sentiments = creating_entities_vocab(directory_path,
-    #                                                    ['adjs_neg', 'adjs_neg', 'nouns_neg', 'nouns_pos'])
-
-    # разметка и выделение
-    # mkdir_labeled_texts(directory_path, corpus_name, 'labeled_items')
-    # searching_entities_in_corpus(directory_path, corpus_name, entities_with_sentiments)
-
-    # поиск контекстов для существительных с отрицательной окраской
-    # entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
-    # searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments)
-
-    # nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
-    # nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
-    #
-    # entities_with_sentiments = creating_entities_vocab(directory_path, ['nouns_person_neg'])
-    # searching_contexts_by_entities(directory_path, corpus_name, entities_with_sentiments, nlp)
-
-    # fi = open(os.path.join(directory_path, 'Rambler_source_test3/201101/20110101/20110101000749_utf/texts/22655849.txt'), 'r')
-    # text = fi.read()
-    # # print(mystem_tokenizer(text))
-    # print(spacy_tokenizer(text, True))
-    # fi.close()
+    # entities_vocab = creating_entities_vocab(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
+    # searching_contexts(directory_path, ['nouns_person_neg', 'nouns_person_pos'], 'contexts_for_labeled_entities_2',
+    #                    '360k_contexts', 400000)
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
