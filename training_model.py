@@ -1,23 +1,18 @@
+import itertools
 import os
-import re
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from gensim.models import Word2Vec, KeyedVectors
 from keras import Input, layers
 from keras.layers.embeddings import Embedding
 from keras.models import Sequential, Model
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
-from nltk.corpus import stopwords
-from nltk.stem.snowball import SnowballStemmer
-from nltk.tokenize import TweetTokenizer
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
-import tensorflow as tf
 
 
 def embeddings_download(file_path):
@@ -40,58 +35,57 @@ def embeddings_download(file_path):
     return model
 
 
-def data_download(file_path):
+def data_download(directory_path, files: list):
     """
-    загрузка текстов и меток
-    :param file_path: директория с двумя csv-файлами
-    :return: список raw текстов и список меток
+    загрузка +/- контекстов в соотношении 50/50
+    :param directory_path: директория с файлами
+    :param files: имена файлов, откуда грузить
+    ПОРЯДОК СКАЧИВАНИЯ И ЗАПИСИ: -/0/+
+    +удаление тональных слов из выборки
     """
-    data_positive = pd.read_csv(file_path + '/positive.csv', sep=';', encoding='utf-8', header=None)
-    data_negative = pd.read_csv(file_path + '/negative.csv', sep=';', encoding='utf-8', header=None)
-    corpus = pd.concat((data_positive, data_negative), axis=0)
-    corpus = corpus.dropna()
-    corpus.columns = ["id", "tda", "tname", "ttext", "ttype", "trep", "trtw", "tfav", "tstcount", "tfoll", "tfrien",
-                      "listcount"]
-    corpus = corpus.drop(
-        columns=["id", "tda", "tname", "ttype", "trep", "trtw", "tfav", "tstcount", "tfoll", "tfrien", "listcount"],
-        axis=1)
 
-    corpus['ttext_preproc'] = corpus.ttext.apply(lambda x: tweet_tokenizer(x, use_stop_words=True, stemming=False))
-    # corpus['ttext_preproc'] = corpus.ttext.apply(lambda x: preprocess_text_his(x))
-    # corpus['ttext_preproc'] = corpus.ttext_preproc.apply(lambda x: ' '.join(x))
+    contexts = []
+    texts = []
 
-    # corpus.to_csv(file_path + '\\preprocessed.csv', columns=["ttext" "ttext_preproc"])
+    for file in files:
+        with open(os.path.join(directory_path, file), 'r') as contexts_file:
+            contexts.append(contexts_file.readlines())
 
-    texts = list(corpus.ttext_preproc)
-    labels = [1] * len(data_positive) + [0] * len(data_negative)
+    min_len = min(len(contexts[0]), len(contexts[1]))
+
+    for i in range(len(contexts)):
+        texts += contexts[i][:min_len]
+
+    for i in range(len(texts)):
+        tonal_words = texts[i].strip().split("===")[2].split(" ")
+        texts[i] = texts[i].strip().split("===")[1].split(" ")
+        for tonal_word in tonal_words:
+            texts[i].remove(tonal_word)
+
+    labels = [0] * min_len + [1] * min_len
 
     return texts, labels
 
 
-def text_vectorization(texts, labels, embeddings):
+def texts_len_distribution():
+    """
+    построение гистограммы распределения длин текстов
+    """
+
+
+
+
+def text_vectorization(texts, labels, embeddings_model):
     """
     векторизация текстов с помощью предварительно обученных embeddings
-    :param embeddings: предварительно обученные embeddings
+    приведение метод к нормальной форме
+    :param embeddings_model: предварительно обученная модель
     :param labels: метки текстов
     :param texts: тексты
     :return:
     """
 
-    # tokenization
-    # texts = [tweet_tokenizer(text, use_stop_words=True, stemming=False) for text in texts]
-
-    # распределение длин текстов
-    # plt.style.use('ggplot')
-    # # plt.figure(figsize=(16, 9))
-    # # facecolor='g'
-    # n, bins, patches = plt.hist([len(text) for text in texts], 50, density=True)
-    # plt.xlabel('Number of words in a text')
-    # plt.ylabel('Share of texts')
-    # plt.axis([0, 40, 0, 0.12])
-    # plt.grid(True)
-    # plt.show()
-
-    embed_len = len(embeddings['лес'])
+    embed_len = len(embeddings_model['лес'])
     text_len = 20
 
     y = np.asarray(labels)
@@ -99,8 +93,8 @@ def text_vectorization(texts, labels, embeddings):
 
     for i in range(len(texts)):
         for j in range(min(len(texts[i]), text_len)):
-            # if texts[i][j] in embeddings.index2word:
-            X[i][j] = embeddings[texts[i][j]]
+            if texts[i][j] in embeddings_model.wv.index2word:
+                X[i][j] = embeddings_model[texts[i][j]]
 
     return X, y
 
@@ -319,7 +313,6 @@ def loss_graph(model_history):
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
-    plt.save("loss_cnn")
     plt.show()
 
 
@@ -338,7 +331,6 @@ def accuracy_graph(model_history):
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.legend()
-    plt.save("acc_cnn")
     plt.show()
 
 
@@ -363,7 +355,7 @@ def plot_confusion_matrix(cm, cmap=plt.cm.Blues, my_tags=[0, 1]):
     plt.show()
 
 
-def plot_confusion_matrix_new(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.winter):
+def plot_confusion_matrix_pro(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.winter):
     """
     визуализация матрицы ошибок
     :param cm:
@@ -396,66 +388,26 @@ def plot_confusion_matrix_new(cm, classes, normalize=False, title='Confusion mat
     return plt
 
 
-def predict_tweet(tweet, predict_model, text_model):
-    """
-    определение тональности твита на обученной сети
-    :param text_model: обученная модель для представления текстов
-    :param predict_model: обученная модель
-    :param tweet: твит
-    :return: positive/negative
-    """
-    # preprocessing
-    tweet = tweet_tokenizer(tweet, use_stop_words=True, stemming=False)
-
-    # vectorization
-    text_len = 12
-    embed_len = len(own_model.wv['лес'])
-
-    X = np.zeros((1, text_len, embed_len), dtype=np.float16)
-
-    for i in range(min(len(tweet), text_len)):
-        X[0][i] = text_model.wv[tweet[i]]
-
-    # prediction
-    if np.round(predict_model.predict(X)) == 0:
-        answer = 'negative'
-    else:
-        answer = 'positive'
-
-    return answer
-
-
-if __name__ == "__main__":
-
+def main():
     start_time = time.time()
-
-    # if 'DESKTOP-TF87PFA' in os.environ['COMPUTERNAME']:
-    #     rubcova_corpus_path = 'D:\datasets\\rubcova_corpus'
-    #     rus_embeddings_path = 'D:\\datasets\\языковые модели\\'
-    #     save_arrays_path = 'D:\\datasets\\npy\\rubcova_corpus\\'
-    #     save_model_path = 'D:\\datasets\\models\\'
-    #
-    # else:
-    rubcova_corpus_path = '/media/anton/ssd2/data/datasets/rubcova_corpus'
-    rus_embeddings_path = '/media/anton/ssd2/data/datasets/языковые модели/'
-    save_arrays_path = '/media/anton/ssd2/data/datasets/npy/rubcova_corpus/'
-    save_model_path = '/media/anton/ssd2/data/datasets/models/'
+    directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
+    models_path = '/media/anton/ssd2/data/datasets/language_models'
 
     # загрузка rus embeddings
     # embeddings_index = embeddings_download(rus_embeddings_path + '180\\model.bin')
 
     # загрузка данных
-    texts, labels = data_download(rubcova_corpus_path)
+    texts, labels = data_download(directory_path, ['negative_contexts', 'positive_contexts'])
 
     # обучаем модель самостоятельно с помощью gensim
-    own_model = Word2Vec(texts, min_count=0, size=300)
-    own_model.save('/media/anton/ssd2/data/datasets/языковые модели/tweets_model.w2v')
+    # model = Word2Vec(texts, min_count=0, size=300)
+    # model.save('/media/anton/ssd2/data/datasets/language_models/my-absa/only_on_posneg_contexts.w2v')
 
     # загрузка обученной текстовой модели
-    # own_model = Word2Vec.load(rus_embeddings_path + 'tweets.model')
+    model = Word2Vec.load(os.path.join(models_path, 'habr_w2v/tweets_model.w2v'))
 
     # векторизация текстов
-    X, y = text_vectorization(texts, labels, own_model)
+    X, y = text_vectorization(texts, labels, model)
 
     # сохранение векторизованных текстов для дальнейшего использования
     # np.save(save_arrays_path + '\\X_len20.npy', X)
@@ -465,7 +417,7 @@ if __name__ == "__main__":
     # X = np.load(save_arrays_path + '\\X_len20.npy')
     # y = np.load(save_arrays_path + '\\y.npy')
 
-    # разделение выборки на  тренировочную и тестовую
+    # разделение выборки на тренировочную и тестовую
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, shuffle=True)
     del X
 
@@ -499,47 +451,7 @@ if __name__ == "__main__":
     # print(mdl.summary())
 
     # multi CNN
-    # mdl = build_model_multi_cnn(X_train.shape[1], X_train.shape[2])
-    #
-    # history = mdl.fit(X_train,
-    #                   y_train,
-    #                   epochs=10,
-    #                   batch_size=128,
-    #                   validation_split=0.2)
-    # loss_graph(history)
-    # accuracy_graph(history)
-    # print(mdl.evaluate(X_test, y_test))
-    # print(mdl.summary())
-
-    # multi CNN with embedding layer
-
-    # создаем и обучаем токенизатор
-    tokenizer = Tokenizer(num_words=100000)
-    tokenizer.fit_on_texts(X_train)
-
-    # отображаем каждый текст в массив идентификаторов токенов
-    x_train_seq = get_sequences(tokenizer, X_train)
-    x_test_seq = get_sequences(tokenizer, X_test)
-
-    # загружаем обученную модель word2vec
-    # w2v_model = Word2Vec.load(r'D:\datasets\языковые модели\tweets.model')
-    embed_len = own_model.vector_size
-    vocab_power = 100000
-    sentence_len = 26
-
-    # инициализируем матрицу embedding слоя нулями
-    embedding_matrix = np.zeros((vocab_power, embed_len))
-    # Добавляем NUM=100000 наиболее часто встречающихся слов из обучающей выборки в embedding слой
-    for word, i in tokenizer.word_index.items():
-        if i >= vocab_power:
-            break
-        if word in own_model.wv.vocab.keys():
-            embedding_matrix[i] = own_model.wv[word]
-
-    # mdl = build_model_multi_cnn_with_embed(X_train.shape[0], X_train.shape[1], vocab_power, sentence_len,
-    #                                        embedding_matrix)
-
-    mdl = build_model_rnn()
+    mdl = build_model_multi_cnn(X_train.shape[1], X_train.shape[2])
 
     history = mdl.fit(X_train,
                       y_train,
@@ -550,6 +462,46 @@ if __name__ == "__main__":
     accuracy_graph(history)
     print(mdl.evaluate(X_test, y_test))
     print(mdl.summary())
+
+    # multi CNN with embedding layer
+
+    # # создаем и обучаем токенизатор
+    # tokenizer = Tokenizer(num_words=100000)
+    # tokenizer.fit_on_texts(X_train)
+    #
+    # # отображаем каждый текст в массив идентификаторов токенов
+    # x_train_seq = get_sequences(tokenizer, X_train)
+    # x_test_seq = get_sequences(tokenizer, X_test)
+    #
+    # # загружаем обученную модель word2vec
+    # # w2v_model = Word2Vec.load(r'D:\datasets\языковые модели\tweets.model')
+    # embed_len = own_model.vector_size
+    # vocab_power = 100000
+    # sentence_len = 26
+    #
+    # # инициализируем матрицу embedding слоя нулями
+    # embedding_matrix = np.zeros((vocab_power, embed_len))
+    # # Добавляем NUM=100000 наиболее часто встречающихся слов из обучающей выборки в embedding слой
+    # for word, i in tokenizer.word_index.items():
+    #     if i >= vocab_power:
+    #         break
+    #     if word in own_model.wv.vocab.keys():
+    #         embedding_matrix[i] = own_model.wv[word]
+    #
+    # # mdl = build_model_multi_cnn_with_embed(X_train.shape[0], X_train.shape[1], vocab_power, sentence_len,
+    # #                                        embedding_matrix)
+    #
+    # mdl = build_model_rnn()
+    #
+    # history = mdl.fit(X_train,
+    #                   y_train,
+    #                   epochs=10,
+    #                   batch_size=128,
+    #                   validation_split=0.2)
+    # loss_graph(history)
+    # accuracy_graph(history)
+    # print(mdl.evaluate(X_test, y_test))
+    # print(mdl.summary())
 
     # mdl.save(save_model_path + 'cnn_many_layers.h5')
 
@@ -566,3 +518,7 @@ if __name__ == "__main__":
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
+
+
+if __name__ == "__main__":
+    main()
