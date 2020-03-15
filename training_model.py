@@ -67,12 +67,20 @@ def data_download(directory_path, files: list):
     return texts, labels
 
 
-def texts_len_distribution():
+def texts_len_distribution(texts: list):
     """
-    построение гистограммы распределения длин текстов
+    построение распределения длин текстов коллекции
     """
 
-
+    plt.style.use('ggplot')
+    # plt.figure(figsize=(16, 9))
+    # facecolor='g'
+    n, bins, patches = plt.hist([len(text) for text in texts], 50, density=True)
+    plt.xlabel('Number of words in a text')
+    plt.ylabel('Share of texts')
+    plt.axis([0, 40, 0, 0.12])
+    plt.grid(True)
+    plt.show()
 
 
 def text_vectorization(texts, labels, embeddings_model):
