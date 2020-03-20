@@ -4,15 +4,19 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+import sklearn
 from gensim.models import Word2Vec, KeyedVectors
+from gensim.test.utils import datapath
 from keras import Input, layers
 from keras.layers.embeddings import Embedding
 from keras.models import Sequential, Model
 from keras.preprocessing.sequence import pad_sequences
-from keras.preprocessing.text import Tokenizer
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
+from sklearn.metrics import f1_score
+from gensim.models.wrappers import FastText
+from navec import Navec
 
 
 def embeddings_download(file_path):
@@ -396,26 +400,45 @@ def plot_confusion_matrix_pro(cm, classes, normalize=False, title='Confusion mat
     return plt
 
 
+def load_language_model(language_models_path, language_model_name, texts, self_train: bool, save_self_model: bool,
+                        self_model_name):
+    """
+    загрузка/обучение языковой модели
+    :param language_models_path: директория с яз. моделями
+    :param language_model_name: имя яз. модели
+    :param texts: корпус текстов (если обучаем свою модель)
+    :param self_train: обучаем ли свою
+    :param save_self_model: сохранять ли свою обученную
+    :param self_model_name: имя своей модели
+    :return:
+    """
+    if self_train:
+        language_model = Word2Vec(texts, min_count=0, size=300)
+        if save_self_model:
+            language_model.save(os.path.join(language_models_path, self_model_name + '.w2v'))
+    else:
+        if language_model_name[-3:] == 'bin':
+            language_model = KeyedVectors.load_word2vec_format(
+                datapath(os.path.join(language_models_path, language_model_name)), binary=True, )
+        elif language_model_name[-3:] == 'bin':
+            language_model = FastText.load_fasttext_format(os.path.join(language_models_path, language_model_name))
+        else:
+            language_model = Word2Vec.load(os.path.join(language_models_path, language_model_name))
+
+    return language_model
+
+
 def main():
     start_time = time.time()
+
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
-    models_path = '/media/anton/ssd2/data/datasets/language_models'
+    language_models_path = '/media/anton/ssd2/data/datasets/language_models'
+    language_model_name = 'navec_news.bin'
 
-    # загрузка rus embeddings
-    # embeddings_index = embeddings_download(rus_embeddings_path + '180\\model.bin')
-
-    # загрузка данных
     texts, labels = data_download(directory_path, ['negative_contexts', 'positive_contexts'])
-
-    # обучаем модель самостоятельно с помощью gensim
-    # model = Word2Vec(texts, min_count=0, size=300)
-    # model.save('/media/anton/ssd2/data/datasets/language_models/my-absa/only_on_posneg_contexts.w2v')
-
-    # загрузка обученной текстовой модели
-    model = Word2Vec.load(os.path.join(models_path, 'habr_w2v/tweets_model.w2v'))
-
-    # векторизация текстов
-    X, y = text_vectorization(texts, labels, model)
+    language_model = load_language_model(language_models_path, language_model_name, texts, self_train=True,
+                                         save_self_model=False, self_model_name=None)
+    X, y = text_vectorization(texts, labels, language_model)
 
     # сохранение векторизованных текстов для дальнейшего использования
     # np.save(save_arrays_path + '\\X_len20.npy', X)
@@ -523,6 +546,8 @@ def main():
     # confusion matrix
     cm = confusion_matrix(y_test, np.around(mdl.predict(X_test)))
     plot_confusion_matrix(cm, cmap=plt.cm.Blues, my_tags=[0, 1])
+
+    print('f1 score = {}!'.format(f1_score(y_test, np.around(mdl.predict(X_test)))))
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))

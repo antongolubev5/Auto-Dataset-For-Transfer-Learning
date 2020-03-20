@@ -154,7 +154,7 @@ def creating_entities_vocab(directory_path, files: list):
     return entities_with_sentiments
 
 
-def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: dict, nlp):
+def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: dict, nlp, month, output_file):
     """
     по имеющимся сущностям набираем из корпуса выборку контекстов
     :param nlp: модель для разбиения текста на предложения
@@ -162,16 +162,14 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
     :param directory_path:
     :param corpus_name:
     :return:
-    ================================================================
-    сделать try except!!!! чтоб не ломалась программа из-за отсутствия файла
     """
 
-    contexts_for_entities = open(os.path.join(directory_path, 'contexts_for_labeled_entities_1'), 'w')
+    contexts_for_entities = open(os.path.join(directory_path, output_file), 'w')
     list_entities_vocab_keys = list(entities_vocab.keys())
 
     # пробегаем по всем текстам корпуса и выискиваем предложения, содержащие размеченные слова из словаря
     # for month in os.listdir(os.path.join(directory_path, corpus_name)):
-    month = '201101'
+    # month = '201101'
     for day in os.listdir(os.path.join(directory_path, corpus_name, month)):
         for utf in os.listdir(os.path.join(directory_path, corpus_name, month, day)):
             if len(os.listdir(os.path.join(directory_path, corpus_name, month, day, utf))) > 0:
@@ -184,7 +182,7 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
                     # if any(word in list_entities_vocab_keys for word in text_tok):
                     #     print(text)
                     print(text)
-                    # contexts_for_entities.write(text+'\n')
+                    contexts_for_entities.write(text + '\n')
                 for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
                     f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
                     # sent_tok = spacy_tokenizer(sent, True)
@@ -193,8 +191,11 @@ def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: 
                     #     print(sent)
                     # contexts_for_entities.write(sent+'\n')
                     for sent in text2sentences(f.read(), nlp):
+                        contexts_for_entities.write(sent + '\n')
                         print(sent)
                     f.close()
+
+    contexts_for_entities.close()
 
 
 def searching_personal_entities(directory_path, file_from, file_to):
@@ -255,7 +256,7 @@ def searching_contexts(directory_path, entities_vocabs: list, sentences_file, co
     cnt = 0
 
     with open(os.path.join(directory_path, sentences_file), 'r') as corpus_sentences:
-        firstNlines = corpus_sentences.readlines()[sentence_volume:]
+        firstNlines = corpus_sentences.readlines()
 
     cnt = 1
 
@@ -319,13 +320,15 @@ def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts,
     :return:
     """
 
-    contexts = open(os.path.join(directory_path, contexts))
     positive_contexts = open(os.path.join(directory_path, positive_contexts), 'w')
     negative_contexts = open(os.path.join(directory_path, negative_contexts), 'w')
     cnt = 1
 
-    for line in contexts:
-        print(cnt, '/', 88234, ' = ', round(cnt / 88234 * 100, 2), '%...')
+    with open(os.path.join(directory_path, contexts), 'r') as contexts:
+        contexts_lines = contexts.readlines()
+
+    for line in contexts_lines:
+        print(cnt, '/', len(contexts_lines), ' = ', round(cnt / len(contexts_lines) * 100, 2), '%...')
         line_text = line.split('===')[0]
         line_tok = line.split('===')[1].strip()
         flag, lst = check_tones(line_tok.split(" "), entities_vocab)
@@ -347,11 +350,7 @@ def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
-    corpus_name = 'Rambler_source_test3'
-
-    # entities_vocab = creating_entities_vocab(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
-    # searching_contexts(directory_path, ['nouns_person_neg', 'nouns_person_pos'], 'contexts_for_labeled_entities_2',
-    #                    '360k_contexts', 400000)
+    corpus_name = 'Rambler_source'
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
