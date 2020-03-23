@@ -7,6 +7,9 @@ from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
 import time
 from pymystem3 import Mystem
 from string import punctuation
+import pandas as pd
+from collections import Counter
+import matplotlib.pyplot as plt
 
 # import ru2e
 
@@ -308,6 +311,35 @@ def check_tones(text: list, vocab: dict):
     return -10, []
 
 
+def fromtxt2csv(directory_path, files_name: list):
+    """изменение формата хранения корпуса (txt -> csv)"""
+    txtlines = []
+
+    for i in range(len(files_name)):
+        with open(os.path.join(directory_path, files_name[i])) as txtfile:
+            txtlines.append(txtfile.readlines())
+
+    txtlines = [item for sublist in txtlines for item in sublist]
+
+    a = []
+    b = []
+    c = []
+    d = []
+    e = []
+
+    for i in range(len(txtlines)):
+        line = txtlines[i].strip().split(', ')
+        a.append(line[0])
+        b.append(line[1])
+        c.append(line[2])
+        d.append(line[3])
+        e.append(line[4])
+
+    d = {'word': a, 'pos': b, 'lemm': c, 'sentiment': d, 'source': e}
+    df = pd.DataFrame(d)
+    df.to_csv(os.path.join(directory_path, 'RuSentiLex.csv'), index=False, sep='\t')
+
+
 def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts, negative_contexts):
     """
     разделение имеющихся контекстов на 2 позитивные и негативные
@@ -344,6 +376,19 @@ def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts,
 
     for file in [contexts, positive_contexts, negative_contexts]:
         file.close()
+
+
+def words_distribution(directory_path, sentiment):
+    """построение гистограммы тональных слов из контекстов
+    sentiment: 1 if pos else neg
+    """
+    df = pd.read_csv(os.path.join(directory_path, 'posneg_contexts.csv'), sep='\t')
+    pos_words = list(df[df['label'] == sentiment]['tonal_word'])
+    pos_words_c = Counter(pos_words)
+    pos_words_c = pos_words_c.most_common(20)
+    plt.bar([a for (a, b) in pos_words_c], [b for (a, b) in pos_words_c])
+    plt.xticks(rotation='vertical')
+    plt.show()
 
 
 def main():

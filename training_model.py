@@ -433,7 +433,7 @@ def main():
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     language_models_path = '/media/anton/ssd2/data/datasets/language_models'
-    language_model_name = 'navec_news.bin'
+    language_model_name = 'tweets_model.w2v'
 
     texts, labels = data_download(directory_path, ['negative_contexts', 'positive_contexts'])
     language_model = load_language_model(language_models_path, language_model_name, texts, self_train=True,
