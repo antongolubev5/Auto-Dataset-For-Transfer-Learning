@@ -157,50 +157,6 @@ def creating_entities_vocab(directory_path, files: list):
     return entities_with_sentiments
 
 
-def searching_contexts_by_entities(directory_path, corpus_name, entities_vocab: dict, nlp, month, output_file):
-    """
-    по имеющимся сущностям набираем из корпуса выборку контекстов
-    :param nlp: модель для разбиения текста на предложения
-    :param entities_vocab:
-    :param directory_path:
-    :param corpus_name:
-    :return:
-    """
-
-    contexts_for_entities = open(os.path.join(directory_path, output_file), 'w')
-    list_entities_vocab_keys = list(entities_vocab.keys())
-
-    # пробегаем по всем текстам корпуса и выискиваем предложения, содержащие размеченные слова из словаря
-    # for month in os.listdir(os.path.join(directory_path, corpus_name)):
-    # month = '201101'
-    for day in os.listdir(os.path.join(directory_path, corpus_name, month)):
-        for utf in os.listdir(os.path.join(directory_path, corpus_name, month, day)):
-            if len(os.listdir(os.path.join(directory_path, corpus_name, month, day, utf))) > 0:
-                for item in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'items')):
-                    tree = ET.parse(
-                        os.path.join(os.path.join(directory_path, corpus_name, month, day, utf, 'items', item)))
-                    text = tree.getroot()[0].text
-                    # text_tok = spacy_tokenizer(text, True)
-                    # text_tok = mystem_tokenizer(text)
-                    # if any(word in list_entities_vocab_keys for word in text_tok):
-                    #     print(text)
-                    print(text)
-                    contexts_for_entities.write(text + '\n')
-                for text in os.listdir(os.path.join(directory_path, corpus_name, month, day, utf, 'texts')):
-                    f = open(os.path.join(directory_path, corpus_name, month, day, utf, 'texts', text), 'r')
-                    # sent_tok = spacy_tokenizer(sent, True)
-                    # sent_tok = mystem_tokenizer(sent)
-                    # if any(word in list_entities_vocab_keys for word in sent_tok):
-                    #     print(sent)
-                    # contexts_for_entities.write(sent+'\n')
-                    for sent in text2sentences(f.read(), nlp):
-                        contexts_for_entities.write(sent + '\n')
-                        print(sent)
-                    f.close()
-
-    contexts_for_entities.close()
-
-
 def searching_personal_entities(directory_path, file_from, file_to):
     """
     поиск сущностей, которыми можно охарактеризовать людей и запись их в другой файл
@@ -276,68 +232,51 @@ def searching_contexts(directory_path, entities_vocabs: list, sentences_file, co
         file.close()
 
 
-def check_tones(text: list, vocab: dict):
+def searching_contexts_csv(directory_path, entities_vocab, sentences_file, contexts_file, sentence_volume):
     """
-    определение тональности предложения
-    отбрасывание мультитональных предложений
-    вывод тональных слов
-    1 = good, -1 = bad, 0 = mixed, -10 = trash
+    поиск тональных контекстов cреди предложений корпуса
+    :param directory_path:
+    :param entities_vocab: название csv файла c тональными словами
+    :param sentences_file: csv файл с предложениями из корпуса
+    :param contexts_file: csv файл, в который будут записаны контексты
+    :param sentence_volume: сколько предложений из корпуса рассматривать [0:vol]
     """
 
-    bad = False
-    good = False
-    bad_words = []
-    good_words = []
+    entities_vocab = pd.read_csv(os.path.join(directory_path, entities_vocab), sep='\t')
+    entities_vocab = entities_vocab['word'].values
+    corpus_sentences = pd.read_csv(os.path.join(directory_path, sentences_file), sep='\t')
+    contexts = pd.DataFrame(columns=['context', 'context_tokens'])
+    cnt = 1
 
-    for word in text:
-        if word in vocab.keys():
-            if vocab[word] == 'positive':
-                good = True
-                if word not in good_words:
-                    good_words.append(word)
-            else:
-                bad = True
-                if word not in bad_words:
-                    bad_words.append(word)
-            if good and bad:
-                return 0, good_words + bad_words
+    for i in range(len(corpus_sentences)):
+        print(cnt, '/', len(corpus_sentences), ' = ', round(cnt / len(corpus_sentences) * 100, 2), '%...')
+        line_tok = spacy_tokenizer(corpus_sentences.iloc[i][0], True)
+        if any(word in entities_vocab for word in line_tok):
+            cnt += 1
+            contexts = contexts.append(
+                pd.Series([corpus_sentences.iloc[i][0].strip(), ' '.join(line_tok)], index=contexts.columns),
+                ignore_index=True)
+            print(cnt, corpus_sentences.iloc[i][0].strip() + '===' + ' '.join(line_tok))
+        cnt += 1
 
-    if good:
-        return 1, good_words
-
-    if bad:
-        return -1, bad_words
-
-    return -10, []
+    contexts.to_csv(os.path.join(directory_path, contexts_file), index=False, sep='\t')
 
 
-def fromtxt2csv(directory_path, files_name: list):
-    """изменение формата хранения корпуса (txt -> csv)"""
-    txtlines = []
+def csv_vocab2dict(directory_path, entities_vocab):
+    """
+    перенос тональных слов из df в словарь (для скорости на меньших размерах выборки)
+    :param entities_vocab: папка
+    :param directory_path: имя pandas df
+    :return: dict of words
+    """
+    pd_vocab = pd.read_csv(os.path.join(directory_path, entities_vocab), sep='\t')
+    pd_vocab = pd_vocab[['word', 'sentiment']]
 
-    for i in range(len(files_name)):
-        with open(os.path.join(directory_path, files_name[i])) as txtfile:
-            txtlines.append(txtfile.readlines())
+    entities_vocab = {}
+    for i in range(len(pd_vocab)):
+        entities_vocab[pd_vocab.iloc[i][0]] = pd_vocab.iloc[i][1]
 
-    txtlines = [item for sublist in txtlines for item in sublist]
-
-    a = []
-    b = []
-    c = []
-    d = []
-    e = []
-
-    for i in range(len(txtlines)):
-        line = txtlines[i].strip().split(', ')
-        a.append(line[0])
-        b.append(line[1])
-        c.append(line[2])
-        d.append(line[3])
-        e.append(line[4])
-
-    d = {'word': a, 'pos': b, 'lemm': c, 'sentiment': d, 'source': e}
-    df = pd.DataFrame(d)
-    df.to_csv(os.path.join(directory_path, 'RuSentiLex.csv'), index=False, sep='\t')
+    return entities_vocab
 
 
 def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts, negative_contexts):
@@ -378,15 +317,50 @@ def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts,
         file.close()
 
 
-def words_distribution(directory_path, sentiment):
-    """построение гистограммы тональных слов из контекстов
-    sentiment: 1 if pos else neg
+def check_tones(text: list, vocab):
     """
-    df = pd.read_csv(os.path.join(directory_path, 'posneg_contexts.csv'), sep='\t')
-    pos_words = list(df[df['label'] == sentiment]['tonal_word'])
-    pos_words_c = Counter(pos_words)
-    pos_words_c = pos_words_c.most_common(20)
-    plt.bar([a for (a, b) in pos_words_c], [b for (a, b) in pos_words_c])
+    определение тональности предложения
+    отбрасывание мультитональных предложений
+    вывод тональных слов
+    1 = good, -1 = bad, 0 = mixed, -10 = trash
+    """
+
+    bad = False
+    good = False
+    bad_words = []
+    good_words = []
+
+    for word in text:
+        if word in vocab.keys():
+            if vocab[word] == 'positive':
+                good = True
+                if word not in good_words:
+                    good_words.append(word)
+            else:
+                bad = True
+                if word not in bad_words:
+                    bad_words.append(word)
+            if good and bad:
+                return 0, good_words + bad_words
+
+    if good:
+        return 1, good_words
+
+    if bad:
+        return -1, bad_words
+
+    return -10, []
+
+
+def plot_words_distribution(df, sentiment, volume):
+    """
+    построение гистограммы тональных слов из контекстов
+    sentiment: 1 if pos else neg
+    volume: сколько слов рисовать
+    """
+    pos_words = df[df['label'] == sentiment]['tonal_word']
+    pos_words = Counter(pos_words).most_common(volume)
+    plt.bar([key for (key, value) in pos_words], [value for (key, value) in pos_words])
     plt.xticks(rotation='vertical')
     plt.show()
 
