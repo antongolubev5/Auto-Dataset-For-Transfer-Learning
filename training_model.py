@@ -1,7 +1,7 @@
 import itertools
 import os
 import time
-
+import gensim
 import matplotlib.pyplot as plt
 import numpy as np
 import sklearn
@@ -418,8 +418,7 @@ def load_language_model(language_models_path, language_model_name, texts, self_t
             language_model.save(os.path.join(language_models_path, self_model_name + '.w2v'))
     else:
         if language_model_name[-3:] == 'bin':
-            language_model = KeyedVectors.load_word2vec_format(
-                datapath(os.path.join(language_models_path, language_model_name)), binary=True, )
+            language_model = gensim.models.Word2Vec.load(os.path.join(language_models_path, language_model_name))
         elif language_model_name[-3:] == 'bin':
             language_model = FastText.load_fasttext_format(os.path.join(language_models_path, language_model_name))
         else:
@@ -433,11 +432,14 @@ def main():
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     language_models_path = '/media/anton/ssd2/data/datasets/language_models'
-    language_model_name = 'tweets_model.w2v'
+    language_model_name = 'ft_freqprune_400K_100K_pq_300.bin'
 
     texts, labels = data_download(directory_path, ['negative_contexts', 'positive_contexts'])
-    language_model = load_language_model(language_models_path, language_model_name, texts, self_train=True,
-                                         save_self_model=False, self_model_name=None)
+    # language_model = load_language_model(language_models_path, language_model_name, texts, self_train=False,
+    #                                      save_self_model=False, self_model_name=None)
+    language_model = gensim.models.fasttext.FastTextKeyedVectors.load(
+        os.path.join(language_models_path, language_model_name))
+
     X, y = text_vectorization(texts, labels, language_model)
 
     # сохранение векторизованных текстов для дальнейшего использования
@@ -547,7 +549,7 @@ def main():
     cm = confusion_matrix(y_test, np.around(mdl.predict(X_test)))
     plot_confusion_matrix(cm, cmap=plt.cm.Blues, my_tags=[0, 1])
 
-    print('f1 score = {}!'.format(f1_score(y_test, np.around(mdl.predict(X_test)))))
+    print('f1 score = {}'.format(f1_score(y_test, np.around(mdl.predict(X_test)))))
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))

@@ -10,6 +10,7 @@ from string import punctuation
 import pandas as pd
 from collections import Counter
 import matplotlib.pyplot as plt
+import numpy as np
 
 # import ru2e
 
@@ -365,11 +366,110 @@ def plot_words_distribution(df, sentiment, volume):
     plt.show()
 
 
+def tonal_word_in_quotes(text, word):
+    """
+    проверяем, внутри ли кавычек тональное слово, если да, возможна смена тональности/значения и предложение не нужно
+    """
+    text = text.lower()
+    pos = 0
+    if word in text:
+        pos = text.index(word)
+    elif word[:-1] in text:
+        pos = text.index(word[:-1])
+    elif word[:-2] in text:
+        pos = text.index(word[:-2])
+    elif word[:-3] in text:
+        pos = text.index(word[:-3])
+
+    return '«' in text[max(pos - 15, 0):pos] or '»' in text[pos:min(pos + 15, len(text) - 1)] or '\"' in text[max(
+        pos - 15, 0):pos] or '\"' in text[pos:min(pos + 15, len(text) - 1)]
+
+
+def edit_csv_data(directory_path):
+    posneg_contexts = pd.read_csv(os.path.join(directory_path, 'posneg_contexts.csv'), sep='\t')
+    posneg_new = pd.DataFrame(columns=['text', 'text_tok', 'sent_word', 'label'])
+    vocab = {}
+    j = 0
+
+    f_pos = open(os.path.join(directory_path, 'nouns_person_pos'), 'r')
+    f_neg = open(os.path.join(directory_path, 'nouns_person_neg'), 'r')
+
+    for line in f_pos:
+        if line.strip().split(', ')[0] not in vocab:
+            vocab[line.strip().split(', ')[0]] = line.strip().split(', ')[3]
+
+    for line in f_neg:
+        if line.strip().split(', ')[0] not in vocab:
+            vocab[line.strip().split(', ')[0]] = line.strip().split(', ')[3]
+
+    for i in range(len(posneg_contexts)):
+        if any(word in vocab for word in posneg_contexts.iloc[i]['text_tok'].split()) and len(
+                posneg_contexts.iloc[i]['text_tok'].split()) > 10 and not tonal_word_in_quotes(
+            posneg_contexts.iloc[i]['text'], posneg_contexts.iloc[i]['tonal_word']):
+            posneg_new = posneg_new.append(posneg_contexts.iloc[i], ignore_index=True)
+            print(i, i / len(posneg_contexts) * 100)
+
+    posneg_new.to_csv(os.path.join(directory_path, 'posneg_context_cleaned.csv'), index=False, sep='\t')
+
+
+def drop_multi_entities_sentences(contexts_all):
+    """
+    удаление из выборки предложений, содержащих несколько сущностей
+    """
+    contexts = pd.DataFrame(contexts_all.columns)
+    j = 1
+    for i in range(len(contexts_all)):
+        if len(contexts_all.iloc[i]['tonal_word'].split()) == 1:
+            contexts = contexts.append(contexts_all.iloc[i])
+            j += 1
+        print(i, i / len(contexts_all) * 100)
+    return contexts
+
+
+def check_sentiments(words, neg_words: set, pos_words: set):
+    """
+    классификация предложения на 3 группы по тональности: смешанная, положительная, отрицательная
+    """
+    words = set(words.split())
+    if words.intersection(neg_words) and words.intersection(pos_words):
+        return 'posneg'
+    elif words.intersection(neg_words):
+        return 'negneg'
+    elif words.intersection(pos_words):
+        return 'pospos'
+
+
+def search_multi_entities_sentences(contexts_all, neg_words: set, pos_words: set):
+    """
+    поиск мультитональных (2 тональности) предложений в выборке
+    """
+    contexts_all['tonal_words_cnt'] = contexts_all['tonal_word'].apply(lambda x: len(x.split()))
+    contexts_all = contexts_all.loc[contexts_all['tonal_words_cnt'] == 2]
+    contexts_all['sent_type'] = contexts_all['tonal_word'].apply(lambda x: check_sentiments(x, neg_words, pos_words))
+    return contexts_all
+
+
+def vocab_from_file(directory_path, file_name):
+    vocab = []
+    with open(os.path.join(directory_path, file_name), 'r') as f:
+        for line in f:
+            vocab.append(line.strip().split(', ')[0])
+    return set(vocab)
+
+
 def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source'
+
+    # edit_csv_data(directory_path)
+    neg_words = vocab_from_file(directory_path, 'nouns_person_neg')
+    pos_words = vocab_from_file(directory_path, 'nouns_person_pos')
+    df = pd.read_csv(os.path.join(directory_path, 'posneg_context_cleaned.csv'), sep='\t')
+    df = search_multi_entities_sentences(df, neg_words, pos_words)
+    plt.hist(df['sent_type'])
+    plt.show()
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
