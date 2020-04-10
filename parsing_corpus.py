@@ -10,6 +10,7 @@ from string import punctuation
 import pandas as pd
 from collections import Counter
 import matplotlib.pyplot as plt
+from collections import Counter
 import numpy as np
 
 # import ru2e
@@ -353,7 +354,7 @@ def check_tones(text: list, vocab):
     return -10, []
 
 
-def plot_words_distribution(df, sentiment, volume):
+def plot_words_distribution(df, sentiment, volume, save: bool):
     """
     построение гистограммы тональных слов из контекстов
     sentiment: 1 if pos else neg
@@ -361,8 +362,14 @@ def plot_words_distribution(df, sentiment, volume):
     """
     pos_words = df[df['label'] == sentiment]['tonal_word']
     pos_words = Counter(pos_words).most_common(volume)
-    plt.bar([key for (key, value) in pos_words], [value for (key, value) in pos_words])
+    plt.figure()
+    plt.barh([key for (key, value) in pos_words], [value for (key, value) in pos_words])
+    plt.gca().invert_yaxis()
     plt.xticks(rotation='vertical')
+    sentiment = 'negative' if sentiment == -1 else 'positive'
+    if bool:
+        plt.savefig('/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/' + sentiment + '_distribution',
+                    bbox_inches='tight')
     plt.show()
 
 
@@ -416,7 +423,7 @@ def drop_multi_entities_sentences(contexts_all):
     """
     удаление из выборки предложений, содержащих несколько сущностей
     """
-    contexts = pd.DataFrame(contexts_all.columns)
+    contexts = pd.DataFrame(columns=contexts_all.columns)
     j = 1
     for i in range(len(contexts_all)):
         if len(contexts_all.iloc[i]['tonal_word'].split()) == 1:
@@ -457,19 +464,47 @@ def vocab_from_file(directory_path, file_name):
     return set(vocab)
 
 
+def create_balanced_samples(contexts_all, volume):
+    """
+    из обычной выборки делаем сбалансированную:
+    len(pos_words) = len(neg_words) = volume
+    len(each_word) =  volume / 25 (берем 25 наиболее популярных положительных и отрицательных слов)
+    """
+    word_volume = volume // 25
+    contexts_balanced = pd.DataFrame(columns=contexts_all.columns)
+    for label in [-1, 1]:
+        cntr = Counter(contexts_all[contexts_all['label'] == label]['tonal_word']).most_common(25)
+        for key, value in cntr:
+            contexts_balanced = contexts_balanced.append(contexts_all[contexts_all['tonal_word'] == key][:word_volume])
+    return contexts_balanced
+
+
+def drop_same_sentences_with_quotes(contexts_all):
+    """
+    почему-то разные типы кавычек не почистились на этапе предобработки
+    удаление одинаковых предложений с разными типами кавычек
+    """
+    cleaned_texts = contexts_all['text'].apply(lambda x: x.replace('«', '\"')).apply(lambda x: x.replace('»', '\"'))
+    contexts_all['text'] = cleaned_texts
+    return contexts_all.drop_duplicates()
+
+
 def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source'
 
-    # edit_csv_data(directory_path)
-    neg_words = vocab_from_file(directory_path, 'nouns_person_neg')
-    pos_words = vocab_from_file(directory_path, 'nouns_person_pos')
-    df = pd.read_csv(os.path.join(directory_path, 'posneg_context_cleaned.csv'), sep='\t')
-    df = search_multi_entities_sentences(df, neg_words, pos_words)
-    plt.hist(df['sent_type'])
-    plt.show()
+    # contexts_all = pd.read_csv(os.path.join(directory_path, 'posneg_context_cleaned.csv'), sep='\t')
+    # contexts_all = drop_multi_entities_sentences(contexts_all)
+    # contexts_all = drop_same_sentences_with_quotes(contexts_all)
+    # contexts_all.to_csv(os.path.join(directory_path, 'single_loc_posneg_context_cleaned.csv'), index=False, sep='\t')
+
+    contexts_all = pd.read_csv(os.path.join(directory_path, 'single_loc_posneg_context_cleaned.csv'), sep='\t')
+    contexts_all = create_balanced_samples(contexts_all, 5000)
+
+    plot_words_distribution(contexts_all, 1, 25, False)
+    plot_words_distribution(contexts_all, -1, 25, False)
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
