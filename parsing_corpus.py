@@ -135,30 +135,6 @@ def searching_entities_in_corpus(directory_path, corpus_name, entities_with_sent
                     f.close()
 
 
-def creating_entities_vocab(directory_path, files: list):
-    """
-    выделение из словаря русентилекс тональных слов (positive/negative)
-    :param directory_path: путь к файлам
-    :param files: список файлов, из которых необходимо достать слова
-    :return: словарь тональных слов
-    """
-
-    entities_with_sentiments = {}
-
-    for i in range(len(files)):
-        files[i] = open(os.path.join(directory_path, files[i]), 'r')
-
-    for file in files:
-        for line in file:
-            line_info = line.strip().split(', ')
-            word = line_info[0]
-            if not (word in entities_with_sentiments.keys()):
-                entities_with_sentiments[word] = line_info[3]
-        file.close()
-
-    return entities_with_sentiments
-
-
 def searching_personal_entities(directory_path, file_from, file_to):
     """
     поиск сущностей, которыми можно охарактеризовать людей и запись их в другой файл
@@ -244,9 +220,10 @@ def searching_contexts_csv(directory_path, entities_vocab, sentences_file, conte
     :param sentence_volume: сколько предложений из корпуса рассматривать [0:vol]
     """
 
-    entities_vocab = pd.read_csv(os.path.join(directory_path, entities_vocab), sep='\t')
-    entities_vocab = entities_vocab['word'].values
-    corpus_sentences = pd.read_csv(os.path.join(directory_path, sentences_file), sep='\t')
+    # entities_vocab = pd.read_csv(os.path.join(directory_path, entities_vocab), sep='\t')
+    entities_vocab = entities_vocab.keys()
+    # corpus_sentences = pd.read_csv(os.path.join(directory_path, sentences_file), sep='\t')
+    corpus_sentences = sentences_file
     contexts = pd.DataFrame(columns=['context', 'context_tokens'])
     cnt = 1
 
@@ -262,23 +239,6 @@ def searching_contexts_csv(directory_path, entities_vocab, sentences_file, conte
         cnt += 1
 
     contexts.to_csv(os.path.join(directory_path, contexts_file), index=False, sep='\t')
-
-
-def csv_vocab2dict(directory_path, entities_vocab):
-    """
-    перенос тональных слов из df в словарь (для скорости на меньших размерах выборки)
-    :param entities_vocab: папка
-    :param directory_path: имя pandas df
-    :return: dict of words
-    """
-    pd_vocab = pd.read_csv(os.path.join(directory_path, entities_vocab), sep='\t')
-    pd_vocab = pd_vocab[['word', 'sentiment']]
-
-    entities_vocab = {}
-    for i in range(len(pd_vocab)):
-        entities_vocab[pd_vocab.iloc[i][0]] = pd_vocab.iloc[i][1]
-
-    return entities_vocab
 
 
 def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts, negative_contexts):
@@ -319,10 +279,90 @@ def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts,
         file.close()
 
 
-def check_tones(text: list, vocab):
+def divide_contexts_csv(contexts_all, entities_vocab):
+    """
+    разделение имеющихся контекстов на 2 позитивные и негативные
+    смешанные контексты в отдельный df
+    """
+    cnt = 1
+    contexts_labeled = pd.DataFrame(columns=['text', 'text_tok', 'tonal_word', 'label'])
+    for i in range(len(contexts_all)):
+        print(cnt, '/', len(contexts_all), ' = ', round(cnt / len(contexts_all) * 100, 2), '%...')
+        line_text = contexts_all.iloc[i]['context']
+        line_tok = contexts_all.iloc[i]['context_tokens']
+        flag, lst = check_tones(line_tok.split(" "), entities_vocab)
+
+        if flag == 1:
+            contexts_labeled = contexts_labeled.append(
+                pd.Series([line_text, line_tok, ' '.join(lst), 1], index=contexts_labeled.columns),
+                ignore_index=True)
+        elif flag == -1:
+            contexts_labeled = contexts_labeled.append(
+                pd.Series([line_text, line_tok, ' '.join(lst), -1], index=contexts_labeled.columns),
+                ignore_index=True)
+        elif flag == 0:  # mixed
+            contexts_labeled = contexts_labeled.append(
+                pd.Series([line_text, line_tok, ' '.join(lst), 0], index=contexts_labeled.columns),
+                ignore_index=True)
+        else:
+            print(line_text)
+        cnt += 1
+    return contexts_labeled
+
+
+def edit_csv_data(entities_vocab, contexts_all):
+    """
+    чистка выборки:
+    удаление коротких контекстов (<10 слов)
+    удаление контекстов, в которых оценочное слово расположено в кавычках (попытка)
+    """
+    posneg_new = pd.DataFrame(columns=contexts_all.columns)
+    j = 0
+    for i in range(len(contexts_all)):
+        if any(word in entities_vocab for word in contexts_all.iloc[i]['text_tok'].split()) and len(
+                contexts_all.iloc[i]['text_tok'].split()) > 10 \
+                and not tonal_word_in_quotes(contexts_all.iloc[i]['text'], contexts_all.iloc[i]['tonal_word']):
+            posneg_new = posneg_new.append(contexts_all.iloc[i], ignore_index=True)
+        print(i, i / len(contexts_all) * 100)
+    return posneg_new
+
+
+def drop_multi_entities_sentences(contexts_all):
+    """
+    удаление из выборки предложений, содержащих несколько сущностей
+    """
+    contexts = pd.DataFrame(columns=contexts_all.columns)
+    j = 1
+    for i in range(len(contexts_all)):
+        if len(contexts_all.iloc[i]['tonal_word'].split()) == 1:
+            contexts = contexts.append(contexts_all.iloc[i])
+            j += 1
+        print(i, i / len(contexts_all) * 100)
+    return contexts
+
+
+def plot_words_distribution(df, sentiment, volume, save: bool):
+    """
+    построение гистограммы тональных слов из контекстов
+    sentiment: 1 if pos else neg
+    volume: сколько слов рисовать
+    """
+    pos_words = df[df['label'] == sentiment]['tonal_word']
+    pos_words = Counter(pos_words).most_common(volume)
+    plt.figure()
+    plt.barh([key for (key, value) in pos_words], [value for (key, value) in pos_words])
+    plt.gca().invert_yaxis()
+    plt.xticks(rotation='vertical')
+    sentiment = 'negative' if sentiment == -1 else 'positive'
+    if bool:
+        plt.savefig('/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/' + sentiment + '_distribution',
+                    bbox_inches='tight')
+    plt.show()
+
+
+def check_sentiment_of_sentence(text: list, vocab):
     """
     определение тональности предложения
-    отбрасывание мультитональных предложений
     вывод тональных слов
     1 = good, -1 = bad, 0 = mixed, -10 = trash
     """
@@ -354,28 +394,9 @@ def check_tones(text: list, vocab):
     return -10, []
 
 
-def plot_words_distribution(df, sentiment, volume, save: bool):
-    """
-    построение гистограммы тональных слов из контекстов
-    sentiment: 1 if pos else neg
-    volume: сколько слов рисовать
-    """
-    pos_words = df[df['label'] == sentiment]['tonal_word']
-    pos_words = Counter(pos_words).most_common(volume)
-    plt.figure()
-    plt.barh([key for (key, value) in pos_words], [value for (key, value) in pos_words])
-    plt.gca().invert_yaxis()
-    plt.xticks(rotation='vertical')
-    sentiment = 'negative' if sentiment == -1 else 'positive'
-    if bool:
-        plt.savefig('/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/' + sentiment + '_distribution',
-                    bbox_inches='tight')
-    plt.show()
-
-
 def tonal_word_in_quotes(text, word):
     """
-    проверяем, внутри ли кавычек тональное слово, если да, возможна смена тональности/значения и предложение не нужно
+    проверяем, внутри ли кавычек тональное слово, если да, возможна смена тональности/значения и контекст не нужен
     """
     text = text.lower()
     pos = 0
@@ -392,88 +413,54 @@ def tonal_word_in_quotes(text, word):
         pos - 15, 0):pos] or '\"' in text[pos:min(pos + 15, len(text) - 1)]
 
 
-def edit_csv_data(directory_path):
-    posneg_contexts = pd.read_csv(os.path.join(directory_path, 'posneg_contexts.csv'), sep='\t')
-    posneg_new = pd.DataFrame(columns=['text', 'text_tok', 'sent_word', 'label'])
-    vocab = {}
-    j = 0
-
-    f_pos = open(os.path.join(directory_path, 'nouns_person_pos'), 'r')
-    f_neg = open(os.path.join(directory_path, 'nouns_person_neg'), 'r')
-
-    for line in f_pos:
-        if line.strip().split(', ')[0] not in vocab:
-            vocab[line.strip().split(', ')[0]] = line.strip().split(', ')[3]
-
-    for line in f_neg:
-        if line.strip().split(', ')[0] not in vocab:
-            vocab[line.strip().split(', ')[0]] = line.strip().split(', ')[3]
-
-    for i in range(len(posneg_contexts)):
-        if any(word in vocab for word in posneg_contexts.iloc[i]['text_tok'].split()) and len(
-                posneg_contexts.iloc[i]['text_tok'].split()) > 10 and not tonal_word_in_quotes(
-            posneg_contexts.iloc[i]['text'], posneg_contexts.iloc[i]['tonal_word']):
-            posneg_new = posneg_new.append(posneg_contexts.iloc[i], ignore_index=True)
-            print(i, i / len(posneg_contexts) * 100)
-
-    posneg_new.to_csv(os.path.join(directory_path, 'posneg_context_cleaned.csv'), index=False, sep='\t')
-
-
-def drop_multi_entities_sentences(contexts_all):
-    """
-    удаление из выборки предложений, содержащих несколько сущностей
-    """
-    contexts = pd.DataFrame(columns=contexts_all.columns)
-    j = 1
-    for i in range(len(contexts_all)):
-        if len(contexts_all.iloc[i]['tonal_word'].split()) == 1:
-            contexts = contexts.append(contexts_all.iloc[i])
-            j += 1
-        print(i, i / len(contexts_all) * 100)
-    return contexts
-
-
-def check_sentiments(words, neg_words: set, pos_words: set):
+def check_sentiments(words, entities_vocab):
     """
     классификация предложения на 3 группы по тональности: смешанная, положительная, отрицательная
     """
-    words = set(words.split())
-    if words.intersection(neg_words) and words.intersection(pos_words):
+    neg_words = set([key for key, value in entities_vocab.items() if value == 'negative'])
+    pos_words = set([key for key, value in entities_vocab.items() if value == 'positive'])
+    words = set(words)
+    if len(words.intersection(neg_words)) == 1 and len(words.intersection(pos_words)) == 0:
+        return 'neg'
+    elif len(words.intersection(neg_words)) == 0 and len(words.intersection(pos_words)) == 1:
+        return 'pos'
+    elif len(words.intersection(neg_words)) == 1 and len(words.intersection(pos_words)) == 1:
         return 'posneg'
-    elif words.intersection(neg_words):
+    elif len(words.intersection(neg_words)) == 2:
         return 'negneg'
-    elif words.intersection(pos_words):
+    elif len(words.intersection(pos_words)) == 2:
         return 'pospos'
 
 
-def search_multi_entities_sentences(contexts_all, neg_words: set, pos_words: set):
+def search_multi_entities_sentences(contexts_all, entities_vocab):
     """
     поиск мультитональных (2 тональности) предложений в выборке
     """
     contexts_all['tonal_words_cnt'] = contexts_all['tonal_word'].apply(lambda x: len(x.split()))
     contexts_all = contexts_all.loc[contexts_all['tonal_words_cnt'] == 2]
-    contexts_all['sent_type'] = contexts_all['tonal_word'].apply(lambda x: check_sentiments(x, neg_words, pos_words))
+    contexts_all['sent_type'] = contexts_all['tonal_word'].apply(lambda x: check_sentiments(x, entities_vocab))
     return contexts_all
 
 
-def vocab_from_file(directory_path, file_name):
-    vocab = []
-    with open(os.path.join(directory_path, file_name), 'r') as f:
-        for line in f:
-            vocab.append(line.strip().split(', ')[0])
-    return set(vocab)
+def vocab_from_file(directory_path, file_names):
+    vocab = dict()
+    for file_name in file_names:
+        with open(os.path.join(directory_path, file_name), 'r') as f:
+            for line in f:
+                vocab[line.strip().split(', ')[0]] = line.strip().split(', ')[3]
+    return vocab
 
 
-def create_balanced_samples(contexts_all, volume):
+def create_balanced_samples(contexts_all, volume, top_words):
     """
     из обычной выборки делаем сбалансированную:
     len(pos_words) = len(neg_words) = volume
     len(each_word) =  volume / 25 (берем 25 наиболее популярных положительных и отрицательных слов)
     """
-    word_volume = volume // 25
+    word_volume = volume // top_words
     contexts_balanced = pd.DataFrame(columns=contexts_all.columns)
     for label in [-1, 1]:
-        cntr = Counter(contexts_all[contexts_all['label'] == label]['tonal_word']).most_common(25)
+        cntr = Counter(contexts_all[contexts_all['label'] == label]['tonal_word']).most_common(top_words)
         for key, value in cntr:
             contexts_balanced = contexts_balanced.append(contexts_all[contexts_all['tonal_word'] == key][:word_volume])
     return contexts_balanced
@@ -489,22 +476,70 @@ def drop_same_sentences_with_quotes(contexts_all):
     return contexts_all.drop_duplicates()
 
 
+def from_raw_sentences_to_dataset(raw_data, entities_vocab):
+    """
+    pipeline создания сбалансированной выборки из сырых контекстов
+    не более двух сущностей в одном контексте
+    не менее 10 слов в контексте
+    return 1-сущностные контексты, 2-сущностные контексты
+    """
+    entities_vocab = entities_vocab
+    contexts = pd.DataFrame(columns=['text', 'text_tok', 'tonal_word', 'label', 'sent_type'])
+    cnt = 1
+
+    for i in range(len(raw_data)):
+        print(cnt, '/', len(raw_data), ' = ', round(cnt / len(raw_data) * 100, 2), '%...')
+        context_text = raw_data.iloc[i]['sentence']
+        context_tok = spacy_tokenizer(context_text, True)
+        if any(word in entities_vocab for word in context_tok) and len(context_tok) > 10:
+            flag, sentiment_words = check_sentiment_of_sentence(context_tok, entities_vocab)
+            quotes = False
+            for sentiment_word in sentiment_words:
+                if tonal_word_in_quotes(context_text, sentiment_word):
+                    quotes = True
+            if len(sentiment_words) <= 2 and not quotes:
+                if flag == 1:
+                    contexts = contexts.append(
+                        pd.Series(
+                            [context_text, ' '.join(context_tok), ' '.join(sentiment_words), 1,
+                             check_sentiments(context_tok, entities_vocab)], index=contexts.columns),
+                        ignore_index=True)
+                elif flag == -1:
+                    contexts = contexts.append(
+                        pd.Series([context_text, ' '.join(context_tok), ' '.join(sentiment_words), -1,
+                                   check_sentiments(context_tok, entities_vocab)], index=contexts.columns),
+                        ignore_index=True)
+                elif flag == 0:
+                    contexts = contexts.append(
+                        pd.Series([context_text, ' '.join(context_tok), ' '.join(sentiment_words), 0,
+                                   check_sentiments(context_tok, entities_vocab)], index=contexts.columns),
+                        ignore_index=True)
+                else:
+                    print(context_text)
+        cnt += 1
+
+    contexts = drop_same_sentences_with_quotes(contexts)
+    multi_contexts = contexts[contexts['sent_type'] not in ['pos', 'neg']]
+    single_contexts = contexts[contexts['sent_type'] in ['pos', 'neg']]
+    return single_contexts, multi_contexts
+
+
 def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source'
+    entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
 
-    # contexts_all = pd.read_csv(os.path.join(directory_path, 'posneg_context_cleaned.csv'), sep='\t')
-    # contexts_all = drop_multi_entities_sentences(contexts_all)
-    # contexts_all = drop_same_sentences_with_quotes(contexts_all)
-    # contexts_all.to_csv(os.path.join(directory_path, 'single_loc_posneg_context_cleaned.csv'), index=False, sep='\t')
+    # raw_data = pd.read_csv(os.path.join(directory_path, 'unlabeled_contexts.csv'), sep='\t')
+    # raw_data = raw_data[:10000]
+    # single, multi = from_raw_sentences_to_dataset(raw_data, entities_vocab)
+    # single.to_csv(os.path.join(directory_path, 'small_contexts.csv'), index=False, sep='\t')
 
-    contexts_all = pd.read_csv(os.path.join(directory_path, 'single_loc_posneg_context_cleaned.csv'), sep='\t')
-    contexts_all = create_balanced_samples(contexts_all, 5000)
-
-    plot_words_distribution(contexts_all, 1, 25, False)
-    plot_words_distribution(contexts_all, -1, 25, False)
+    # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
+    # contexts_all = create_balanced_samples(contexts_all, 5000, 25)
+    # plot_words_distribution(contexts_all, 1, 25, False)
+    # plot_words_distribution(contexts_all, -1, 25, False)
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
