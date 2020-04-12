@@ -462,16 +462,26 @@ def create_balanced_samples(contexts_all, volume, top_words):
     for label in [-1, 1]:
         cntr = Counter(contexts_all[contexts_all['label'] == label]['tonal_word']).most_common(top_words)
         for key, value in cntr:
-            contexts_balanced = contexts_balanced.append(contexts_all[contexts_all['tonal_word'] == key][:word_volume])
-    return contexts_balanced
+            word_batch = contexts_all[contexts_all['tonal_word'] == key][:word_volume]
+            contexts_balanced = contexts_balanced.append(word_batch)
+            contexts_all = contexts_all.drop(word_batch.index)
+        real_len = len(contexts_balanced[contexts_balanced['label'] == label])
+        if real_len != volume:
+            frequent_words = ['профессионал', 'легенда', 'красавица']
+            contexts_all = contexts_all[~contexts_all['tonal_word'].isin(frequent_words)]
+            contexts_balanced = contexts_balanced.append(
+                contexts_all[
+                    contexts_all['label'] == label].sample(n=volume - real_len, random_state=1))
+    return contexts_balanced.drop_duplicates()
 
 
-def drop_same_sentences_with_quotes(contexts_all):
+def drop_same_sentences(contexts_all):
     """
-    почему-то разные типы кавычек не почистились на этапе предобработки
+    почему-то разные типы кавычек и дефисов не почистились на этапе предобработки
     удаление одинаковых предложений с разными типами кавычек
     """
-    cleaned_texts = contexts_all['text'].apply(lambda x: x.replace('«', '\"')).apply(lambda x: x.replace('»', '\"'))
+    cleaned_texts = contexts_all['text'].apply(lambda x: x.replace('«', '\"')).apply(
+        lambda x: x.replace('»', '\"')).apply(lambda x: x.replace('-', '-'))
     contexts_all['text'] = cleaned_texts
     return contexts_all.drop_duplicates()
 
@@ -518,9 +528,9 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
                     print(context_text)
         cnt += 1
 
-    contexts = drop_same_sentences_with_quotes(contexts)
-    multi_contexts = contexts[contexts['sent_type'] not in ['pos', 'neg']]
-    single_contexts = contexts[contexts['sent_type'] in ['pos', 'neg']]
+    contexts = drop_same_sentences(contexts)
+    multi_contexts = contexts[contexts['sent_type'].isin(['pos', 'neg'])]
+    single_contexts = contexts[~contexts['sent_type'].isin(['pos', 'neg'])]
     return single_contexts, multi_contexts
 
 
@@ -530,16 +540,21 @@ def main():
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source'
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
+    # entities_vocab = vocab_from_file(directory_path, ['nouns_person_pos'])
 
     # raw_data = pd.read_csv(os.path.join(directory_path, 'unlabeled_contexts.csv'), sep='\t')
-    # raw_data = raw_data[:10000]
-    # single, multi = from_raw_sentences_to_dataset(raw_data, entities_vocab)
-    # single.to_csv(os.path.join(directory_path, 'small_contexts.csv'), index=False, sep='\t')
+    # potential_contexts = raw_data[-1500000:]
+    # single, multi = from_raw_sentences_to_dataset(potential_contexts, entities_vocab)
+    # raw_data = raw_data[:-1500000]
+    #
+    # single.to_csv(os.path.join(directory_path, 'new_single_contexts.csv'), index=False, sep='\t')
+    # multi.to_csv(os.path.join(directory_path, 'new_multie_contexts.csv'), index=False, sep='\t')
+    # raw_data.to_csv(os.path.join(directory_path, 'unlabeled_contexts.csv'), index=False, sep='\t')
 
-    # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    # contexts_all = create_balanced_samples(contexts_all, 5000, 25)
-    # plot_words_distribution(contexts_all, 1, 25, False)
-    # plot_words_distribution(contexts_all, -1, 25, False)
+    contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
+    contexts_all = create_balanced_samples(contexts_all, 5000, 25)
+    plot_words_distribution(contexts_all, 1, 25, False)
+    plot_words_distribution(contexts_all, -1, 25, False)
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
