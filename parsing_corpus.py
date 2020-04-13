@@ -467,11 +467,11 @@ def create_balanced_samples(contexts_all, volume, top_words):
             contexts_all = contexts_all.drop(word_batch.index)
         real_len = len(contexts_balanced[contexts_balanced['label'] == label])
         if real_len != volume:
-            frequent_words = ['профессионал', 'легенда', 'красавица']
+            frequent_words = ['профессионал', 'легенда', 'красавица', 'кумир']
             contexts_all = contexts_all[~contexts_all['tonal_word'].isin(frequent_words)]
             contexts_balanced = contexts_balanced.append(
                 contexts_all[
-                    contexts_all['label'] == label].sample(n=volume - real_len, random_state=1))
+                    contexts_all['label'] == label].sample(n=volume - real_len, random_state=2))
     return contexts_balanced.drop_duplicates()
 
 
@@ -529,8 +529,8 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
         cnt += 1
 
     contexts = drop_same_sentences(contexts)
-    multi_contexts = contexts[contexts['sent_type'].isin(['pos', 'neg'])]
-    single_contexts = contexts[~contexts['sent_type'].isin(['pos', 'neg'])]
+    multi_contexts = contexts[~contexts['sent_type'].isin(['pos', 'neg'])]
+    single_contexts = contexts[contexts['sent_type'].isin(['pos', 'neg'])]
     return single_contexts, multi_contexts
 
 
@@ -543,16 +543,14 @@ def main():
     # entities_vocab = vocab_from_file(directory_path, ['nouns_person_pos'])
 
     # raw_data = pd.read_csv(os.path.join(directory_path, 'unlabeled_contexts.csv'), sep='\t')
-    # potential_contexts = raw_data[-1500000:]
-    # single, multi = from_raw_sentences_to_dataset(potential_contexts, entities_vocab)
-    # raw_data = raw_data[:-1500000]
+    # single, multi = from_raw_sentences_to_dataset(raw_data, entities_vocab)
     #
     # single.to_csv(os.path.join(directory_path, 'new_single_contexts.csv'), index=False, sep='\t')
-    # multi.to_csv(os.path.join(directory_path, 'new_multie_contexts.csv'), index=False, sep='\t')
-    # raw_data.to_csv(os.path.join(directory_path, 'unlabeled_contexts.csv'), index=False, sep='\t')
+    # multi.to_csv(os.path.join(directory_path, 'new_multi_contexts.csv'), index=False, sep='\t')
 
     contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
     contexts_all = create_balanced_samples(contexts_all, 5000, 25)
+    contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts.csv'), index=False, sep='\t')
     plot_words_distribution(contexts_all, 1, 25, False)
     plot_words_distribution(contexts_all, -1, 25, False)
 
