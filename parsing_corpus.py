@@ -11,7 +11,7 @@ import pandas as pd
 from collections import Counter
 import matplotlib.pyplot as plt
 from collections import Counter
-import numpy as np
+import seaborn as sns
 
 # import ru2e
 
@@ -346,17 +346,32 @@ def plot_words_distribution(df, sentiment, volume, save: bool):
     построение гистограммы тональных слов из контекстов
     sentiment: 1 if pos else neg
     volume: сколько слов рисовать
+    если volume==-1, гистограмма по всевозможным словам
     """
-    pos_words = df[df['label'] == sentiment]['tonal_word']
-    pos_words = Counter(pos_words).most_common(volume)
-    plt.figure()
-    plt.barh([key for (key, value) in pos_words], [value for (key, value) in pos_words])
-    plt.gca().invert_yaxis()
-    plt.xticks(rotation='vertical')
+    if volume == -1:
+        volume = len(set(df[df['label'] == sentiment]['tonal_word']))
+    df = df[df['label'] == sentiment]['tonal_word']
+    cntr = Counter(df).most_common(volume)
+    sns.set(style="whitegrid")
+    f, ax = plt.subplots(figsize=(10, 15))
+    sns.set_color_codes("dark")
+    fig = sns.barplot(x=[value for key, value in cntr], y=[key for key, value in cntr], label="Total",
+                      color="b")
+    bias = 40 if sentiment == 1 else 140
+    for p in ax.patches:
+        width = p.get_width()
+        ax.text(width + bias,
+                p.get_y() + p.get_height() / 2. + 0.5,
+                '{:.0f}'.format(width),
+                ha="center")
+    # ax.legend(ncol=2, loc="lower right", frameon=True)
+    tone = 'положительных' if sentiment == 1 else 'отрицательных'
+    ax.set(ylabel="", xlabel="Распределение " + tone + ' слов по выборке')
     sentiment = 'negative' if sentiment == -1 else 'positive'
-    if bool:
-        plt.savefig('/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/' + sentiment + '_distribution',
-                    bbox_inches='tight')
+    figure = fig.get_figure()
+    if save:
+        figure.savefig('/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/' + sentiment + '_distribution',
+                       dpi=600, bbox_inches='tight')
     plt.show()
 
 
@@ -549,10 +564,12 @@ def main():
     # multi.to_csv(os.path.join(directory_path, 'new_multi_contexts.csv'), index=False, sep='\t')
 
     contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    contexts_all = create_balanced_samples(contexts_all, 5000, 25)
-    contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts.csv'), index=False, sep='\t')
-    plot_words_distribution(contexts_all, 1, 25, False)
-    plot_words_distribution(contexts_all, -1, 25, False)
+    plot_words_distribution(contexts_all, sentiment=-1, volume=73, save=True)
+
+    # contexts_all = create_balanced_samples(contexts_all, 5000, 25)
+    # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts.csv'), index=False, sep='\t')
+    # plot_words_distribution(contexts_all, 1, 25, False)
+    # plot_words_distribution(contexts_all, -1, 25, False)
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
