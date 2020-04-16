@@ -12,10 +12,18 @@ from collections import Counter
 import matplotlib.pyplot as plt
 from collections import Counter
 import seaborn as sns
+from sklearn.feature_extraction.text import TfidfVectorizer
+from numpy import dot
+from numpy.linalg import norm
+import itertools
 
 # import ru2e
 
 spacy.prefer_gpu()
+
+
+def cosine_similarity(a, b):
+    return dot(a, b) / (norm(a) * norm(b))
 
 
 def regTokenize(text):
@@ -466,27 +474,28 @@ def vocab_from_file(directory_path, file_names):
     return vocab
 
 
-def create_balanced_samples(contexts_all, volume, top_words):
+def create_balanced_samples(contexts_all, volumes, top_words, drop_volume):
     """
     из обычной выборки делаем сбалансированную:
-    len(pos_words) = len(neg_words) = volume
+    drop_volume = [...neg, ...pos] сколько первых слов отсекаем для повторного извлечения в случае нехватки
+    volumes = [volume_neg, volume_pos]
+    top_words = [top_words_neg, top_words_pos]
     len(each_word) =  volume / 25 (берем 25 наиболее популярных положительных и отрицательных слов)
     """
-    word_volume = volume // top_words
     contexts_balanced = pd.DataFrame(columns=contexts_all.columns)
-    for label in [-1, 1]:
-        cntr = Counter(contexts_all[contexts_all['label'] == label]['tonal_word']).most_common(top_words)
+    for label, volume, top_word, drop_first in zip([-1, 1], volumes, top_words, drop_volume):
+        word_volume = volume // top_word
+        cntr = Counter(contexts_all[contexts_all['label'] == label]['tonal_word']).most_common(top_word)
+        words_to_take_later = [key for key, value in cntr][drop_first:]
         for key, value in cntr:
             word_batch = contexts_all[contexts_all['tonal_word'] == key][:word_volume]
             contexts_balanced = contexts_balanced.append(word_batch)
             contexts_all = contexts_all.drop(word_batch.index)
         real_len = len(contexts_balanced[contexts_balanced['label'] == label])
         if real_len != volume:
-            frequent_words = ['профессионал', 'легенда', 'красавица', 'кумир']
-            contexts_all = contexts_all[~contexts_all['tonal_word'].isin(frequent_words)]
             contexts_balanced = contexts_balanced.append(
-                contexts_all[
-                    contexts_all['label'] == label].sample(n=volume - real_len, random_state=2))
+                contexts_all[contexts_all['tonal_word'].isin(words_to_take_later)].sample(n=volume - real_len,
+                                                                                          random_state=2))
     return contexts_balanced.drop_duplicates()
 
 
@@ -549,6 +558,25 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
     return single_contexts, multi_contexts
 
 
+def drop_similar_contexts_tfidf(contexts_all):
+    """
+    в выборке много перепечатанных и очень похожих контекстов
+    нужно прорядить ее одним из методов
+    """
+    similarities = pd.DataFrame(columns=['similarity', 'id1', 'id2'])
+    corpus = list(contexts_all['text_tok'])
+    vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
+    X = vectorizer.fit_transform(corpus).toarray()
+    cnt = 0
+    for i, j in itertools.combinations(contexts_all.index, 2):
+        print(cnt / ((len(contexts_all) * len(contexts_all) - 1) / 2) * 100)
+        value = cosine_similarity(X[i], X[j])
+        # if value > 0.001:
+        #     similarities = similarities.append(pd.Series([value, i, j], index=similarities.columns), ignore_index=True)
+        cnt += 1
+    # similarities = pd.DataFrame.from_dict(dictinary_list)
+
+
 def main():
     start_time = time.time()
 
@@ -564,12 +592,12 @@ def main():
     # multi.to_csv(os.path.join(directory_path, 'new_multi_contexts.csv'), index=False, sep='\t')
 
     contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    plot_words_distribution(contexts_all, sentiment=-1, volume=73, save=True)
+    drop_similar_contexts_tfidf(contexts_all[:3000])
 
-    # contexts_all = create_balanced_samples(contexts_all, 5000, 25)
-    # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts.csv'), index=False, sep='\t')
-    # plot_words_distribution(contexts_all, 1, 25, False)
-    # plot_words_distribution(contexts_all, -1, 25, False)
+    # contexts_all = create_balanced_samples(contexts_all, volumes=[5000, 5000], top_words=[40, 30], drop_volume=[3, 2])
+    # plot_words_distribution(contexts_all, sentiment=-1, volume=-1, save=False)
+    # plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
+    # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_50_50.csv'), index=False, sep='\t')
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
