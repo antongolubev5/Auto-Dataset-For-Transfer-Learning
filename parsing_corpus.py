@@ -1,6 +1,9 @@
+import collections
+from tqdm import tqdm
 import re
 import os
 import spacy
+import numpy as np
 import xml.etree.ElementTree as ET
 from spacy.lang.ru import Russian
 from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
@@ -8,7 +11,6 @@ import time
 from pymystem3 import Mystem
 from string import punctuation
 import pandas as pd
-from collections import Counter
 import matplotlib.pyplot as plt
 from collections import Counter
 import seaborn as sns
@@ -16,13 +18,19 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from numpy import dot
 from numpy.linalg import norm
 import itertools
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy import sparse
+import pymorphy2
+import nltk
+from razdel import tokenize
+import rutokenizer
 
 # import ru2e
 
 spacy.prefer_gpu()
 
 
-def cosine_similarity(a, b):
+def cosine_similarity_own(a, b):
     return dot(a, b) / (norm(a) * norm(b))
 
 
@@ -65,7 +73,17 @@ def mystem_tokenizer(text):
     return ' '.join(tokens)
 
 
-def spacy_tokenizer(text, lemm: bool):
+def pymorphy_tokenizer(text, tokenizer, morph):
+    """
+    https://pymorphy2.readthedocs.io/en/latest/user/guide.html#id2
+    """
+    tokens = tokenizer.tokenize(text)
+    punc_list = ' –!"@#$%^&*()*+_,.\:;<>=?[]{}|~`/«»—' + '0123456789'
+    return [morph.parse(token)[0].normal_form for token in tokens if
+            token != " " and token.strip() not in set(punctuation + punc_list)]
+
+
+def spacy_tokenizer(text, lemm: bool, nlp):
     """токенизатор на основе библиотеки spacy, учитывающий особенности русского языка
     spacy_russian_tokenizer --- токенизация
     spacy_ru2 --- лемматизация (как параметр)
@@ -80,18 +98,18 @@ def spacy_tokenizer(text, lemm: bool):
     # doc = nlp(text)
 
     # ВЗЯТЬ РУССКИЙ ТОКЕНИЗАТОР https://github.com/antongolubev5/spacy_russian_tokenizer
-    nlp = Russian()
+    # nlp = Russian()
     russian_tokenizer = RussianTokenizer(nlp, MERGE_PATTERNS)
     nlp.add_pipe(russian_tokenizer, name='russian_tokenizer')
     doc = nlp(text)
 
-    text = [token.lemma_ for token in doc] if lemm else text
+    text = [token.lemma_ if lemm else token for token in doc]
 
     punc_list = set(' –!"@#$%^&*()*+_,.\:;<>=?[]{}|~`/«»—' + '0123456789')
     output = []
 
     for i in range(len(text)):
-        text[i] = re.sub(" +", " ", text[i])
+        text[i] = re.sub(" +", " ", str(text[i]))
         text[i] = text[i].lower()
         if not (text[i] in punc_list):
             output.append(text[i])
@@ -198,21 +216,16 @@ def searching_contexts(directory_path, entities_vocabs: list, sentences_file, co
 
     list_entities_vocab_keys = list(vocab.keys())
     contexts = open(os.path.join(directory_path, contexts_file), 'w')
-    cnt = 0
 
     with open(os.path.join(directory_path, sentences_file), 'r') as corpus_sentences:
         firstNlines = corpus_sentences.readlines()
 
-    cnt = 1
-
-    for line in firstNlines:
-        print(cnt, '/', len(firstNlines), ' = ', round(cnt / len(firstNlines) * 100, 2), '%...')
+    for line in tqdm(firstNlines):
         line_tok = spacy_tokenizer(line, True)
         if any(word in list_entities_vocab_keys for word in line_tok):
             cnt += 1
             contexts.write(line.strip() + '===' + ' '.join(line_tok))
             print(cnt, line.strip() + '===' + ' '.join(line_tok))
-        cnt += 1
 
     for file in [vocab_neg, vocab_pos, contexts, corpus_sentences]:
         file.close()
@@ -233,9 +246,8 @@ def searching_contexts_csv(directory_path, entities_vocab, sentences_file, conte
     # corpus_sentences = pd.read_csv(os.path.join(directory_path, sentences_file), sep='\t')
     corpus_sentences = sentences_file
     contexts = pd.DataFrame(columns=['context', 'context_tokens'])
-    cnt = 1
 
-    for i in range(len(corpus_sentences)):
+    for i in tqdm(range(len(corpus_sentences))):
         print(cnt, '/', len(corpus_sentences), ' = ', round(cnt / len(corpus_sentences) * 100, 2), '%...')
         line_tok = spacy_tokenizer(corpus_sentences.iloc[i][0], True)
         if any(word in entities_vocab for word in line_tok):
@@ -244,7 +256,6 @@ def searching_contexts_csv(directory_path, entities_vocab, sentences_file, conte
                 pd.Series([corpus_sentences.iloc[i][0].strip(), ' '.join(line_tok)], index=contexts.columns),
                 ignore_index=True)
             print(cnt, corpus_sentences.iloc[i][0].strip() + '===' + ' '.join(line_tok))
-        cnt += 1
 
     contexts.to_csv(os.path.join(directory_path, contexts_file), index=False, sep='\t')
 
@@ -263,13 +274,11 @@ def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts,
 
     positive_contexts = open(os.path.join(directory_path, positive_contexts), 'w')
     negative_contexts = open(os.path.join(directory_path, negative_contexts), 'w')
-    cnt = 1
 
     with open(os.path.join(directory_path, contexts), 'r') as contexts:
         contexts_lines = contexts.readlines()
 
-    for line in contexts_lines:
-        print(cnt, '/', len(contexts_lines), ' = ', round(cnt / len(contexts_lines) * 100, 2), '%...')
+    for line in tqdm(contexts_lines):
         line_text = line.split('===')[0]
         line_tok = line.split('===')[1].strip()
         flag, lst = check_tones(line_tok.split(" "), entities_vocab)
@@ -280,8 +289,6 @@ def divide_contexts(directory_path, entities_vocab, contexts, positive_contexts,
             negative_contexts.write(line_text + '===' + line_tok + '===' + ' '.join(lst) + '===' + '-1' + '\n')
         else:
             print(line_text)
-
-        cnt += 1
 
     for file in [contexts, positive_contexts, negative_contexts]:
         file.close()
@@ -324,29 +331,42 @@ def edit_csv_data(entities_vocab, contexts_all):
     удаление коротких контекстов (<10 слов)
     удаление контекстов, в которых оценочное слово расположено в кавычках (попытка)
     """
-    posneg_new = pd.DataFrame(columns=contexts_all.columns)
-    j = 0
-    for i in range(len(contexts_all)):
+    text = []
+    text_tok = []
+    tonal_word = []
+    label = []
+    sent_type = []
+    for i in tqdm(range(len(contexts_all))):
         if any(word in entities_vocab for word in contexts_all.iloc[i]['text_tok'].split()) and len(
                 contexts_all.iloc[i]['text_tok'].split()) > 10 \
                 and not tonal_word_in_quotes(contexts_all.iloc[i]['text'], contexts_all.iloc[i]['tonal_word']):
-            posneg_new = posneg_new.append(contexts_all.iloc[i], ignore_index=True)
-        print(i, i / len(contexts_all) * 100)
-    return posneg_new
+            text.append(contexts_all.iloc[i]['text'])
+            text_tok.append(contexts_all.iloc[i]['text_tok'])
+            tonal_word.append(contexts_all.iloc[i]['tonal_word'])
+            label.append(contexts_all.iloc[i]['label'])
+            sent_type.append(contexts_all.iloc[i]['sent_type'])
+    data = {'text': text, 'text_tok': text_tok, 'tonal_word': tonal_word, 'label': label, 'sent_type': sent_type}
+    return pd.DataFrame.from_dict(data)
 
 
 def drop_multi_entities_sentences(contexts_all):
     """
     удаление из выборки предложений, содержащих несколько сущностей
     """
-    contexts = pd.DataFrame(columns=contexts_all.columns)
-    j = 1
-    for i in range(len(contexts_all)):
+    text = []
+    text_tok = []
+    tonal_word = []
+    label = []
+    sent_type = []
+    for i in tqdm(range(len(contexts_all))):
         if len(contexts_all.iloc[i]['tonal_word'].split()) == 1:
-            contexts = contexts.append(contexts_all.iloc[i])
-            j += 1
-        print(i, i / len(contexts_all) * 100)
-    return contexts
+            text.append(contexts_all.iloc[i]['text'])
+            text_tok.append(contexts_all.iloc[i]['text_tok'])
+            tonal_word.append(contexts_all.iloc[i]['tonal_word'])
+            label.append(contexts_all.iloc[i]['label'])
+            sent_type.append(contexts_all.iloc[i]['sent_type'])
+    data = {'text': text, 'text_tok': text_tok, 'tonal_word': tonal_word, 'label': label, 'sent_type': sent_type}
+    return pd.DataFrame.from_dict(data)
 
 
 def plot_words_distribution(df, sentiment, volume, save: bool):
@@ -517,14 +537,20 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
     не менее 10 слов в контексте
     return 1-сущностные контексты, 2-сущностные контексты
     """
-    entities_vocab = entities_vocab
-    contexts = pd.DataFrame(columns=['text', 'text_tok', 'tonal_word', 'label', 'sent_type'])
-    cnt = 1
+    text = []
+    text_tok = []
+    tonal_word = []
+    label = []
+    sent_type = []
 
-    for i in range(len(raw_data)):
-        print(cnt, '/', len(raw_data), ' = ', round(cnt / len(raw_data) * 100, 2), '%...')
-        context_text = raw_data.iloc[i]['sentence']
-        context_tok = spacy_tokenizer(context_text, True)
+    tokenizer = rutokenizer.Tokenizer()
+    tokenizer.load()
+    morph = pymorphy2.MorphAnalyzer()
+
+    for i in tqdm(range(len(raw_data))):
+        # context_text = raw_data.iloc[i]['sentence']
+        context_text = raw_data[i].strip()
+        context_tok = pymorphy_tokenizer(context_text, tokenizer, morph)
         if any(word in entities_vocab for word in context_tok) and len(context_tok) > 10:
             flag, sentiment_words = check_sentiment_of_sentence(context_tok, entities_vocab)
             quotes = False
@@ -533,26 +559,28 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
                     quotes = True
             if len(sentiment_words) <= 2 and not quotes:
                 if flag == 1:
-                    contexts = contexts.append(
-                        pd.Series(
-                            [context_text, ' '.join(context_tok), ' '.join(sentiment_words), 1,
-                             check_sentiments(context_tok, entities_vocab)], index=contexts.columns),
-                        ignore_index=True)
+                    text.append(context_text)
+                    text_tok.append(' '.join(context_tok))
+                    tonal_word.append(' '.join(sentiment_words))
+                    label.append(1)
+                    sent_type.append(check_sentiments(context_tok, entities_vocab))
                 elif flag == -1:
-                    contexts = contexts.append(
-                        pd.Series([context_text, ' '.join(context_tok), ' '.join(sentiment_words), -1,
-                                   check_sentiments(context_tok, entities_vocab)], index=contexts.columns),
-                        ignore_index=True)
+                    text.append(context_text)
+                    text_tok.append(' '.join(context_tok))
+                    tonal_word.append(' '.join(sentiment_words))
+                    label.append(-1)
+                    sent_type.append(check_sentiments(context_tok, entities_vocab))
                 elif flag == 0:
-                    contexts = contexts.append(
-                        pd.Series([context_text, ' '.join(context_tok), ' '.join(sentiment_words), 0,
-                                   check_sentiments(context_tok, entities_vocab)], index=contexts.columns),
-                        ignore_index=True)
+                    text.append(context_text)
+                    text_tok.append(' '.join(context_tok))
+                    tonal_word.append(' '.join(sentiment_words))
+                    label.append(0)
+                    sent_type.append(check_sentiments(context_tok, entities_vocab))
                 else:
                     print(context_text)
-        cnt += 1
 
-    contexts = drop_same_sentences(contexts)
+    data = {'text': text, 'text_tok': text_tok, 'tonal_word': tonal_word, 'label': label, 'sent_type': sent_type}
+    contexts = pd.DataFrame.from_dict(data)
     multi_contexts = contexts[~contexts['sent_type'].isin(['pos', 'neg'])]
     single_contexts = contexts[contexts['sent_type'].isin(['pos', 'neg'])]
     return single_contexts, multi_contexts
@@ -563,18 +591,19 @@ def drop_similar_contexts_tfidf(contexts_all):
     в выборке много перепечатанных и очень похожих контекстов
     нужно прорядить ее одним из методов
     """
-    similarities = pd.DataFrame(columns=['similarity', 'id1', 'id2'])
-    corpus = list(contexts_all['text_tok'])
-    vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
-    X = vectorizer.fit_transform(corpus).toarray()
-    cnt = 0
-    for i, j in itertools.combinations(contexts_all.index, 2):
-        print(cnt / ((len(contexts_all) * len(contexts_all) - 1) / 2) * 100)
-        value = cosine_similarity(X[i], X[j])
-        # if value > 0.001:
-        #     similarities = similarities.append(pd.Series([value, i, j], index=similarities.columns), ignore_index=True)
-        cnt += 1
-    # similarities = pd.DataFrame.from_dict(dictinary_list)
+    set_tonal_words = set(contexts_all['tonal_word'])
+    for tonal_word in tqdm(set_tonal_words):
+        context_word = contexts_all[contexts_all['tonal_word'] == tonal_word]
+        corpus = list(context_word['text_tok'])
+        vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
+        X = vectorizer.fit_transform(corpus)
+        X = cosine_similarity(X)
+        pairs = np.argwhere(X > 0.5).T
+        diag = pairs[0] != pairs[1]
+        pairs = pairs.T[diag]
+        numbers = np.unique(np.max(pairs, axis=1))
+        contexts_all = contexts_all.drop(index=context_word.iloc[numbers].index)
+    return contexts_all
 
 
 def main():
@@ -585,18 +614,13 @@ def main():
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
     # entities_vocab = vocab_from_file(directory_path, ['nouns_person_pos'])
 
-    # raw_data = pd.read_csv(os.path.join(directory_path, 'unlabeled_contexts.csv'), sep='\t')
-    # single, multi = from_raw_sentences_to_dataset(raw_data, entities_vocab)
-    #
-    # single.to_csv(os.path.join(directory_path, 'new_single_contexts.csv'), index=False, sep='\t')
-    # multi.to_csv(os.path.join(directory_path, 'new_multi_contexts.csv'), index=False, sep='\t')
+    # cleaned = drop_similar_contexts_tfidf(cont   exts_all)
+    # cleaned.to_csv(os.path.join(directory_path, 'cleaned.csv'), index=False, sep='\t')
 
     contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    drop_similar_contexts_tfidf(contexts_all[:3000])
-
-    # contexts_all = create_balanced_samples(contexts_all, volumes=[5000, 5000], top_words=[40, 30], drop_volume=[3, 2])
-    # plot_words_distribution(contexts_all, sentiment=-1, volume=-1, save=False)
-    # plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
+    contexts_all = create_balanced_samples(contexts_all, volumes=[5000, 5000], top_words=[40, 30], drop_volume=[1, 3])
+    plot_words_distribution(contexts_all, sentiment=-1, volume=75, save=False)
+    plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
     # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_50_50.csv'), index=False, sep='\t')
 
     total_time = round((time.time() - start_time))
