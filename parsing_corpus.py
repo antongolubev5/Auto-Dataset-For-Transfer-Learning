@@ -1,11 +1,9 @@
-import collections
 from tqdm import tqdm
 import re
 import os
 import spacy
 import numpy as np
 import xml.etree.ElementTree as ET
-from spacy.lang.ru import Russian
 from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
 import time
 from pymystem3 import Mystem
@@ -17,15 +15,10 @@ import seaborn as sns
 from sklearn.feature_extraction.text import TfidfVectorizer
 from numpy import dot
 from numpy.linalg import norm
-import itertools
 from sklearn.metrics.pairwise import cosine_similarity
-from scipy import sparse
 import pymorphy2
-import nltk
-from razdel import tokenize
 import rutokenizer
-
-# import ru2e
+from deeppavlov import configs, build_model
 
 spacy.prefer_gpu()
 
@@ -248,7 +241,6 @@ def searching_contexts_csv(directory_path, entities_vocab, sentences_file, conte
     contexts = pd.DataFrame(columns=['context', 'context_tokens'])
 
     for i in tqdm(range(len(corpus_sentences))):
-        print(cnt, '/', len(corpus_sentences), ' = ', round(cnt / len(corpus_sentences) * 100, 2), '%...')
         line_tok = spacy_tokenizer(corpus_sentences.iloc[i][0], True)
         if any(word in entities_vocab for word in line_tok):
             cnt += 1
@@ -385,7 +377,7 @@ def plot_words_distribution(df, sentiment, volume, save: bool):
     sns.set_color_codes("dark")
     fig = sns.barplot(x=[value for key, value in cntr], y=[key for key, value in cntr], label="Total",
                       color="b")
-    bias = 40 if sentiment == 1 else 140
+    bias = 10 if sentiment == 1 else 5
     for p in ax.patches:
         width = p.get_width()
         ax.text(width + bias,
@@ -606,22 +598,118 @@ def drop_similar_contexts_tfidf(contexts_all):
     return contexts_all
 
 
+def extract_neutral_contexts(directory_path):
+    """
+    извлечение нейтральных контекстов
+    Обрабатываем тексты системой извлечения именованных сущностей (deep pavlov), Пусть нас пока интересуют только персоны.
+    Смотрим на заголовки текстов и ищем такие заголовки, где упоминается персона и нет никаких оценочных слов из оценочного словаря.
+    Вообще никаких. Тогда можно предположить, что и в тексте тоже отношение к этой персоне нейтральное.
+    Берем первое предложение, где есть эта персона из заголовка в качестве нейтрального
+    (и здесь мы уже не обращаем внимание на наличие оценочных слов).
+    """
+    tonal_words = []
+
+    with open(os.path.join(directory_path, 'RuSentiLex2017_revised.txt')) as f:
+        for line in f:
+            line = re.sub(r"[\"]", "", line).lower()
+            words = line.strip().split(', ')
+            tonal_words.append(words[0])
+            tonal_words.append(words[2])
+            if len(words) > 5:
+                tonal_words += words[5:]
+    tonal_words = set(tonal_words)
+
+    ner_model = build_model(configs.ner.ner_rus_bert, download=True)
+    nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
+    nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
+    tokenizer = rutokenizer.Tokenizer()
+    tokenizer.load()
+    morph = pymorphy2.MorphAnalyzer()
+
+    titles = []
+    titles_tok = []
+    bodies = []
+    bodies_tok = []
+    persons = []
+
+    for month in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source'))):
+        if month == '201101':
+            for day in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month))):
+                if day == '20110101':
+                    for utf in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month, day))):
+                        if os.path.exists(os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
+                            for xml_file in os.listdir(
+                                    os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
+                                tree = ET.parse(os.path.join(
+                                    os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items', xml_file)))
+                                title = tree.getroot()[0].text
+                                title_tok = pymorphy_tokenizer(title, tokenizer, morph)
+                                if len(title_tok) < 250:
+                                    title_after_ner = ner_model([title])
+                                    if title_after_ner[1][0].count('B-PER') == 1 and not set(title_tok).intersection(
+                                            tonal_words):
+                                        person_in_title_start_idx = title_after_ner[1][0].index('B-PER')
+                                        person_in_title_idxs = [person_in_title_start_idx]
+                                        for i in range(person_in_title_start_idx + 1, len(title_after_ner[1][0])):
+                                            if title_after_ner[1][0][i] == 'I-PER':
+                                                person_in_title_idxs.append(i)
+                                            else:
+                                                break
+                                        person_in_title_full = [title_after_ner[0][0][i] for i in person_in_title_idxs]
+                                        person_in_title_full = ' '.join(person_in_title_full)
+                                        if os.path.exists(
+                                                os.path.join(directory_path, 'Rambler_source', month, day, utf,
+                                                             'texts', xml_file[:-4] + '.txt')):
+                                            with open(os.path.join(directory_path, 'Rambler_source', month, day, utf,
+                                                                   'texts',
+                                                                   xml_file[:-4] + '.txt')) as f_body:
+                                                body = text2sentences(f_body.read(), nlp)
+                                            for sentence in body:
+                                                if all(x in sentence.lower() for x in
+                                                       person_in_title_full.lower().split()):
+                                                    sentence_after_ner = ner_model([sentence])
+                                                    if 'B-PER' in sentence_after_ner[1][0]:
+                                                        person_in_body_start_idx = sentence_after_ner[1][0].index(
+                                                            'B-PER')
+                                                        person_in_body_idxs = [person_in_body_start_idx]
+                                                        for i in range(person_in_body_start_idx + 1,
+                                                                       len(sentence_after_ner[1][0])):
+                                                            if sentence_after_ner[1][0][i] == 'I-PER':
+                                                                person_in_body_idxs.append(i)
+                                                            else:
+                                                                break
+                                                        person_in_body_full = [sentence_after_ner[0][0][i] for i in
+                                                                               person_in_body_idxs]
+                                                        titles.append(title)
+                                                        titles_tok.append(' '.join(title_tok).lower())
+                                                        bodies.append(sentence)
+                                                        bodies_tok.append(' '.join(
+                                                            pymorphy_tokenizer(sentence, tokenizer, morph)).lower())
+                                                        persons.append(' '.join(person_in_body_full).lower())
+                                                        break
+
+    data = {'title': titles, 'body': bodies, 'person': persons, 'body_tok': bodies_tok, 'title_tok': titles_tok}
+    df = pd.DataFrame.from_dict(data)
+    df['label'] = df['body_tok'].apply(lambda x: len(set(x.split()).intersection(tonal_words)))
+    return df[df['label'] == 0]
+
+
 def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     corpus_name = 'Rambler_source'
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
-    # entities_vocab = vocab_from_file(directory_path, ['nouns_person_pos'])
+    # entities_vocab = vocab_from_file
 
-    # cleaned = drop_similar_contexts_tfidf(cont   exts_all)
-    # cleaned.to_csv(os.path.join(directory_path, 'cleaned.csv'), index=False, sep='\t')
+    neutral_contexts = extract_neutral_contexts(directory_path)
+    neutral_contexts.to_csv(os.path.join(directory_path, 'neutral_contexts.csv'), index=False, sep='\t')
 
-    contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    contexts_all = create_balanced_samples(contexts_all, volumes=[5000, 5000], top_words=[40, 30], drop_volume=[1, 3])
-    plot_words_distribution(contexts_all, sentiment=-1, volume=75, save=False)
-    plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
-    # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_50_50.csv'), index=False, sep='\t')
+    # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_balanced_contexts_70_30.csv'), sep='\t')
+    # # contexts_all = create_balanced_samples(contexts_all, volumes=[11500, 5000], top_words=[60, 25], drop_volume=[1, 1])
+    # plot_words_distribution(contexts_all, sentiment=-1, volume=75, save=False)
+    # plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
+    # # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_70_30.csv'), index=False, sep='\t')
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
@@ -629,3 +717,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # TODO 3 статьи хабр + статья гарвард
+    # TODO почитать про кэширование pymorphy (?)
+    # TODO почитать про flair
+    # TODO матлаб
