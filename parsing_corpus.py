@@ -543,7 +543,7 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
         # context_text = raw_data.iloc[i]['sentence']
         context_text = raw_data[i].strip()
         context_tok = pymorphy_tokenizer(context_text, tokenizer, morph)
-        if any(word in entities_vocab for word in context_tok) and len(context_tok) > 10:
+        if any(word in entities_vocab for word in context_tok) and len(context_tok) > 10 and len(context_tok) < 40:
             flag, sentiment_words = check_sentiment_of_sentence(context_tok, entities_vocab)
             quotes = False
             for sentiment_word in sentiment_words:
@@ -626,8 +626,6 @@ def extract_neutral_contexts(directory_path):
     tokenizer.load()
     morph = pymorphy2.MorphAnalyzer()
 
-    titles = []
-    titles_tok = []
     bodies = []
     bodies_tok = []
     persons = []
@@ -635,63 +633,76 @@ def extract_neutral_contexts(directory_path):
     for month in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source'))):
         if month == '201101':
             for day in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month))):
-                if day == '20110101':
-                    for utf in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month, day))):
-                        if os.path.exists(os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
-                            for xml_file in os.listdir(
-                                    os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
-                                tree = ET.parse(os.path.join(
-                                    os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items', xml_file)))
-                                title = tree.getroot()[0].text
-                                title_tok = pymorphy_tokenizer(title, tokenizer, morph)
-                                if len(title_tok) < 250:
-                                    title_after_ner = ner_model([title])
-                                    if title_after_ner[1][0].count('B-PER') == 1 and not set(title_tok).intersection(
-                                            tonal_words):
-                                        person_in_title_start_idx = title_after_ner[1][0].index('B-PER')
-                                        person_in_title_idxs = [person_in_title_start_idx]
-                                        for i in range(person_in_title_start_idx + 1, len(title_after_ner[1][0])):
-                                            if title_after_ner[1][0][i] == 'I-PER':
-                                                person_in_title_idxs.append(i)
-                                            else:
-                                                break
-                                        person_in_title_full = [title_after_ner[0][0][i] for i in person_in_title_idxs]
-                                        person_in_title_full = ' '.join(person_in_title_full)
-                                        if os.path.exists(
-                                                os.path.join(directory_path, 'Rambler_source', month, day, utf,
-                                                             'texts', xml_file[:-4] + '.txt')):
-                                            with open(os.path.join(directory_path, 'Rambler_source', month, day, utf,
-                                                                   'texts',
-                                                                   xml_file[:-4] + '.txt')) as f_body:
-                                                body = text2sentences(f_body.read(), nlp)
-                                            for sentence in body:
-                                                if all(x in sentence.lower() for x in
-                                                       person_in_title_full.lower().split()):
-                                                    sentence_after_ner = ner_model([sentence])
-                                                    if 'B-PER' in sentence_after_ner[1][0]:
-                                                        person_in_body_start_idx = sentence_after_ner[1][0].index(
-                                                            'B-PER')
-                                                        person_in_body_idxs = [person_in_body_start_idx]
-                                                        for i in range(person_in_body_start_idx + 1,
-                                                                       len(sentence_after_ner[1][0])):
-                                                            if sentence_after_ner[1][0][i] == 'I-PER':
-                                                                person_in_body_idxs.append(i)
-                                                            else:
-                                                                break
-                                                        person_in_body_full = [sentence_after_ner[0][0][i] for i in
-                                                                               person_in_body_idxs]
-                                                        titles.append(title)
-                                                        titles_tok.append(' '.join(title_tok).lower())
-                                                        bodies.append(sentence)
-                                                        bodies_tok.append(' '.join(
-                                                            pymorphy_tokenizer(sentence, tokenizer, morph)).lower())
-                                                        persons.append(' '.join(person_in_body_full).lower())
-                                                        break
+                for utf in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month, day))):
+                    if os.path.exists(os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
+                        for xml_file in os.listdir(
+                                os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
+                            tree = ET.parse(os.path.join(
+                                os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items', xml_file)))
+                            title = tree.getroot()[0].text
+                            title_tok = pymorphy_tokenizer(title, tokenizer, morph)
+                            if len(title_tok) < 250:
+                                title_after_ner = ner_model([title])
+                                if title_after_ner[1][0].count('B-PER') == 1 and not set(title_tok).intersection(
+                                        tonal_words):
+                                    person_in_title_start_idx = title_after_ner[1][0].index('B-PER')
+                                    person_in_title_idxs = [person_in_title_start_idx]
+                                    for i in range(person_in_title_start_idx + 1, len(title_after_ner[1][0])):
+                                        if title_after_ner[1][0][i] == 'I-PER':
+                                            person_in_title_idxs.append(i)
+                                        else:
+                                            break
+                                    person_in_title_full = [title_after_ner[0][0][i] for i in person_in_title_idxs]
+                                    person_in_title_full = ' '.join(person_in_title_full)
+                                    if os.path.exists(
+                                            os.path.join(directory_path, 'Rambler_source', month, day, utf,
+                                                         'texts', xml_file[:-4] + '.txt')):
+                                        with open(os.path.join(directory_path, 'Rambler_source', month, day, utf,
+                                                               'texts',
+                                                               xml_file[:-4] + '.txt')) as f_body:
+                                            body = text2sentences(f_body.read(), nlp)
+                                        for sentence in body:
+                                            sentence_tok = pymorphy_tokenizer(sentence, tokenizer, morph)
+                                            if all(x in sentence.lower() for x in
+                                                   person_in_title_full.lower().split()) and len(
+                                                sentence_tok) > 10 and len(sentence_tok) < 40:
+                                                sentence_after_ner = ner_model([sentence])
+                                                if 'B-PER' in sentence_after_ner[1][0]:
+                                                    person_in_body_start_idx = sentence_after_ner[1][0].index(
+                                                        'B-PER')
+                                                    person_in_body_idxs = [person_in_body_start_idx]
+                                                    for i in range(person_in_body_start_idx + 1,
+                                                                   len(sentence_after_ner[1][0])):
+                                                        if sentence_after_ner[1][0][i] == 'I-PER':
+                                                            person_in_body_idxs.append(i)
+                                                        else:
+                                                            break
+                                                    person_in_body_full = [sentence_after_ner[0][0][i] for i in
+                                                                           person_in_body_idxs]
+                                                    sentence = sentence.replace(' '.join(person_in_body_full), 'MASK')
+                                                    sentence_tok = pymorphy_tokenizer(sentence, tokenizer, morph)
+                                                    bodies.append(sentence)
+                                                    bodies_tok.append(' '.join(sentence_tok).lower())
+                                                    persons.append(' '.join(person_in_body_full).lower())
+                                                    break
 
-    data = {'title': titles, 'body': bodies, 'person': persons, 'body_tok': bodies_tok, 'title_tok': titles_tok}
+    data = {'person': persons, 'body': bodies, 'body_tok': bodies_tok}
     df = pd.DataFrame.from_dict(data)
     df['label'] = df['body_tok'].apply(lambda x: len(set(x.split()).intersection(tonal_words)))
-    return df[df['label'] == 0]
+    df = df[df['label'] == 0]
+    df = df.drop(['label'], axis=1)
+
+    # corpus = list(df['body_tok'])
+    # vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
+    # X = vectorizer.fit_transform(corpus)
+    # X = cosine_similarity(X)
+    # pairs = np.argwhere(X > 0.5).T
+    # diag = pairs[0] != pairs[1]
+    # pairs = pairs.T[diag]
+    # numbers = np.unique(np.max(pairs, axis=1))
+    # df = df.drop(index=df.iloc[numbers].index)
+
+    return df
 
 
 def main():
