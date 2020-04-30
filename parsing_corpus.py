@@ -450,7 +450,7 @@ def tonal_word_in_quotes(text, word):
 
 def check_sentiments(words, entities_vocab):
     """
-    классификация предложения на 3 группы по тональности: смешанная, положительная, отрицательная
+    классификация предложения на группы:
     """
     neg_words = set([key for key, value in entities_vocab.items() if value == 'negative'])
     pos_words = set([key for key, value in entities_vocab.items() if value == 'positive'])
@@ -486,7 +486,7 @@ def vocab_from_file(directory_path, file_names):
     return vocab
 
 
-def create_balanced_samples(contexts_all, volumes, top_words, drop_volume):
+def create_balanced_samples(contexts_all, volumes, volume_neutral, top_words, drop_volume):
     """
     из обычной выборки делаем сбалансированную:
     drop_volume = [...neg, ...pos] сколько первых слов отсекаем для повторного извлечения в случае нехватки
@@ -508,6 +508,8 @@ def create_balanced_samples(contexts_all, volumes, top_words, drop_volume):
             contexts_balanced = contexts_balanced.append(
                 contexts_all[contexts_all['tonal_word'].isin(words_to_take_later)].sample(n=volume - real_len,
                                                                                           random_state=2))
+    contexts_balanced = contexts_balanced.append(
+        contexts_all[contexts_all['label'] == 0].sample(n=volume_neutral, random_state=2))
     return contexts_balanced.drop_duplicates()
 
 
@@ -688,10 +690,14 @@ def extract_neutral_contexts(directory_path):
 
     data = {'person': persons, 'body': bodies, 'body_tok': bodies_tok}
     df = pd.DataFrame.from_dict(data)
-    df['label'] = df['body_tok'].apply(lambda x: len(set(x.split()).intersection(tonal_words)))
-    df = df[df['label'] == 0]
-    df = df.drop(['label'], axis=1)
-
+    # df['label'] = df['body_tok'].apply(lambda x: len(set(x.split()).intersection(tonal_words)))
+    # df = df[df['label'] == 0]
+    # df = df.drop(['label'], axis=1)
+    #
+    # df['has_body'] = df['body_tok'].apply(lambda x: 'mask' not in x)
+    # df = df[df['has_body'] == False]
+    # df = df.drop(['has_body'], axis=1)
+    #
     # corpus = list(df['body_tok'])
     # vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
     # X = vectorizer.fit_transform(corpus)
@@ -713,14 +719,15 @@ def main():
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
     # entities_vocab = vocab_from_file
 
-    neutral_contexts = extract_neutral_contexts(directory_path)
-    neutral_contexts.to_csv(os.path.join(directory_path, 'neutral_contexts.csv'), index=False, sep='\t')
+    # neutral_contexts = extract_neutral_contexts(directory_path)
+    # neutral_contexts.to_csv(os.path.join(directory_path, 'neutral_contexts.csv'), index=False, sep='\t')
 
-    # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_balanced_contexts_70_30.csv'), sep='\t')
-    # # contexts_all = create_balanced_samples(contexts_all, volumes=[11500, 5000], top_words=[60, 25], drop_volume=[1, 1])
+    contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
+    contexts_all = create_balanced_samples(contexts_all, volumes=[2000, 2000], volume_neutral=2000, top_words=[60, 25],
+                                           drop_volume=[1, 1])
+    contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_2neg_2pos_2neutral.csv'), index=False, sep='\t')
     # plot_words_distribution(contexts_all, sentiment=-1, volume=75, save=False)
     # plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
-    # # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_70_30.csv'), index=False, sep='\t')
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
@@ -729,6 +736,10 @@ def main():
 if __name__ == '__main__':
     main()
     # TODO 3 статьи хабр + статья гарвард
-    # TODO почитать про кэширование pymorphy (?)
     # TODO почитать про flair
-    # TODO матлаб
+
+    # TODO извлечь нейтрально-смешанные контексты с двумя сущностями
+    # TODO расширить текущую выборку на двойные + смешанные контексты
+    # TODO исправить absa-bert-pair для двух сущностей
+    # TODO изучить новый датасет + привести его к требуемому формату +  evaluate
+
