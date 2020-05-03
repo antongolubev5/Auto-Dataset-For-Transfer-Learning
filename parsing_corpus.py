@@ -19,6 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pymorphy2
 import rutokenizer
 from deeppavlov import configs, build_model
+from nltk.tokenize import TweetTokenizer
 
 spacy.prefer_gpu()
 
@@ -711,21 +712,131 @@ def extract_neutral_contexts(directory_path):
     return df
 
 
+def tweet_tokenizer(text):
+    vocab_accounts = {'@alfa_bank': 'альфа банк',
+                      '@alfabankby': 'альфа банк',
+                      'social@alfabank.ru': 'альфа банк',
+                      'smm@alfabank.ru': 'альфа банк',
+                      'alfa-bank': 'альфа банк',
+                      '@alfabank': 'альфа банк',
+                      'альфабанк': 'альфа банк',
+                      '@bm_twit': 'банк москва',
+                      'help@sberbank.ru': 'сбербанк',
+                      'sberbank cib': 'сбербанк',
+                      '@sberbank': 'сбербанк',
+                      '@russia_sberbank': 'сбербанк',
+                      '@сбербанк': 'сбербанк',
+                      '@bps_sberbank': 'сбербанк',
+                      'sberbank': 'сбербанк',
+                      'сбер ': 'сбербанк ',
+                      '@vtb': 'втб',
+                      '@raiffeisen_ru': 'райффайзенбанк',
+                      'райфайзен': 'райффайзенбанк',
+                      'райффайзен банк': 'райффайзенбанк',
+                      'райффайзен': 'райффайзенбанк',
+                      'raiffeisen bank': 'райффайзенбанк',
+                      'raiffeisenbank': 'райффайзенбанк',
+                      'raiffeisen': 'райффайзенбанк',
+                      '@rshbmedia': 'россельхозбанк',
+                      '@belgazprombank': 'газпромбанк',
+                      }
+    tw_tok = TweetTokenizer()
+    # result = ' '.join(tw_tok.tokenize(text))
+    tokenizer = rutokenizer.Tokenizer()
+    tokenizer.load()
+    morph = pymorphy2.MorphAnalyzer()
+
+    text = text.lower()
+    result = re.sub('rt', '', text)
+    for account in vocab_accounts.keys():
+        if account in result:
+            result = re.sub(account, vocab_accounts[account], result)
+    # result = re.sub('((www\.[^\s]+)|(https?://[^\s]+))', 'URL', result)
+    result = re.sub('((www\.[^\s]+)|(https?://[^\s]+)|(http:/[^\w]))', '', result)
+    # тут нужно прописать исключения на @имена банков @alpha_bank @sberbank @vtb @raiffeisen_ru @RSHBmedia
+
+    # заменять ники нужно всегда, а маскировать в соответствие разметке
+    result = re.sub('@[^\s]+', '', result)
+    # result = re.sub('[^a-zA-Zа-яА-Я:):(]+', ' ', result) # удаляем смайлы
+    result = re.sub('ё', 'е', result)
+    result = re.sub('&gt;', '', result)
+    result = re.sub('[^a-zA-Zа-яА-Я0-9]+', ' ', result)
+    result = re.sub('втб 24', 'втб', result)
+    result = re.sub('втб24', 'втб', result)
+
+    result = ' '.join(pymorphy_tokenizer(result, tokenizer, morph))
+    result = result.replace('внешторгбанк', 'втб')
+    result = result.replace('газпром', 'газпромбанк')
+    result = result.replace('сберыч', 'сбербанк')
+    result = result.replace('сбер ', 'сбербанк ')
+    result = result.replace('sberbank', 'сбербанк')
+    result = result.replace('банка москва', 'банк москва')
+    result = result.replace('атб банк', 'банк москва')
+    result = result.replace('бм', 'банк москва')
+    result = result.replace('банкмосква ', 'банк москва')
+    result = result.replace('рсхб', 'россельхозбанк')
+    result = result.replace('россельхоз', 'россельхозбанк')
+    result = result.replace('бтв ', 'втб ')
+    result = result.replace('vtb ', 'втб ')
+    result = result.replace('газромбанк ', 'газпромбанк ')
+    result = result.replace('райффазейный', 'райффайзенбанк')
+    if 'альфа' in result:
+        pos = result.find('альфа')
+        if result[pos  + 1] != 'б':
+            result = result.replace('альфа', 'альфа банк')
+
+    if 'альф' in result:
+        pos = result.find('альф')
+        if result[pos + 1] != ' ':
+            result = result.replace('альф', 'альфа банк')
+    result = result.replace('сберлохоразвод', 'сбербанк лох развод')
+    return result
+
+
+def create_semeval_dataset(directory_path, file_name):
+    """
+    приведение данных из соревнования semeval к виду текущей постановки задачи
+    :param directory_path: корневая директория
+    :param file_name: имя csv-файла
+    """
+    vocab = {'sberbank': 'сбербанк',
+             'raiffeisen': 'райффайзенбанк',
+             'vtb': 'втб',
+             'rshb': 'россельхозбанк',
+             'alfabank': 'альфа банк',
+             'gazprom': 'газпромбанк',
+             'bankmoskvy': 'банк москва',
+             'uralsib': 'уралсиб',
+             }
+    has_entity = []
+    contexts_all = pd.read_csv(os.path.join(directory_path, file_name), sep='\t')
+    contexts_all['text_tok'] = contexts_all['text'].apply(lambda x: tweet_tokenizer(x))
+    contexts_all['rus_entity'] = contexts_all['entity'].apply(lambda x: vocab[x])
+
+    for i in range(len(contexts_all)):
+        if contexts_all.iloc[i]['rus_entity'] in contexts_all.iloc[i]['text_tok']:
+            has_entity.append(1)
+        else:
+            has_entity.append(0)
+    contexts_all['has_entity'] = has_entity
+
+    print(contexts_all['has_entity'].value_counts())
+    contexts_all = contexts_all.sort_values(by=['has_entity'])
+    contexts_all.to_csv(os.path.join(directory_path, file_name[:-4] + '_cleaned.csv'), index=False, sep='\t')
+
+
 def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
-    corpus_name = 'Rambler_source'
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
-    # entities_vocab = vocab_from_file
 
-    # neutral_contexts = extract_neutral_contexts(directory_path)
-    # neutral_contexts.to_csv(os.path.join(directory_path, 'neutral_contexts.csv'), index=False, sep='\t')
+    create_semeval_dataset(directory_path, 'bank_train_2016.csv')
 
-    contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    contexts_all = create_balanced_samples(contexts_all, volumes=[2000, 2000], volume_neutral=2000, top_words=[60, 25],
-                                           drop_volume=[1, 1])
-    contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_2neg_2pos_2neutral.csv'), index=False, sep='\t')
+    # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
+    # contexts_all = create_balanced_samples(contexts_all, volumes=[2000, 2000], volume_neutral=2000, top_words=[60, 25],
+    #                                        drop_volume=[1, 1])
+    # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_2neg_2pos_2neutral.csv'), index=False, sep='\t')
     # plot_words_distribution(contexts_all, sentiment=-1, volume=75, save=False)
     # plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
 
@@ -737,9 +848,9 @@ if __name__ == '__main__':
     main()
     # TODO 3 статьи хабр + статья гарвард
     # TODO почитать про flair
-
     # TODO извлечь нейтрально-смешанные контексты с двумя сущностями
     # TODO расширить текущую выборку на двойные + смешанные контексты
-    # TODO исправить absa-bert-pair для двух сущностей
-    # TODO изучить новый датасет + привести его к требуемому формату +  evaluate
+
+    # TODO 2 новых эксперимента с semeval
+
 
