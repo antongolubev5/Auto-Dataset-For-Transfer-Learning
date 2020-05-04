@@ -20,6 +20,7 @@ import pymorphy2
 import rutokenizer
 from deeppavlov import configs, build_model
 from nltk.tokenize import TweetTokenizer
+from razdel import tokenize
 
 spacy.prefer_gpu()
 
@@ -67,14 +68,19 @@ def mystem_tokenizer(text):
     return ' '.join(tokens)
 
 
-def pymorphy_tokenizer(text, tokenizer, morph):
+def pymorphy_tokenizer(text, tokenizer, morph, lemmatize: bool):
     """
     https://pymorphy2.readthedocs.io/en/latest/user/guide.html#id2
     """
     tokens = tokenizer.tokenize(text)
     punc_list = ' –!"@#$%^&*()*+_,.\:;<>=?[]{}|~`/«»—' + '0123456789'
-    return [morph.parse(token)[0].normal_form for token in tokens if
-            token != " " and token.strip() not in set(punctuation + punc_list)]
+    if lemmatize:
+        return [morph.parse(token)[0].normal_form for token in tokens if
+                # token != " " and token.strip() not in set(punctuation + punc_list)]
+                token != " "]
+    else:
+        # return [token for token in tokens if token != " " and token.strip() not in set(punctuation + punc_list)]
+        return [token for token in tokens if token != " "]
 
 
 def spacy_tokenizer(text, lemm: bool, nlp):
@@ -712,7 +718,17 @@ def extract_neutral_contexts(directory_path):
     return df
 
 
-def tweet_tokenizer(text):
+def tweet_tokenizer(text, entity):
+    """
+    попытка сделать нормальный pipeline для очистки исходных твитов
+    что нужно:
+    -лемматизация
+    +удаление links www, http, rt, @users, иных ссылок с .ру
+    +чтобы в получившемся твите присутствовало имя из поля rus_entity, чтобы впоследствии его маскировать для берта
+    ?хештеги, вдруг там имя банка?
+    удалять мусорные символы &amp;quot;  - это уже заботы токенизатора
+    Проблема:
+    """
     vocab_accounts = {'@alfa_bank': 'альфа банк',
                       '@alfabankby': 'альфа банк',
                       'social@alfabank.ru': 'альфа банк',
@@ -733,7 +749,6 @@ def tweet_tokenizer(text):
                       '@raiffeisen_ru': 'райффайзенбанк',
                       'райфайзен': 'райффайзенбанк',
                       'райффайзен банк': 'райффайзенбанк',
-                      'райффайзен': 'райффайзенбанк',
                       'raiffeisen bank': 'райффайзенбанк',
                       'raiffeisenbank': 'райффайзенбанк',
                       'raiffeisen': 'райффайзенбанк',
@@ -764,7 +779,18 @@ def tweet_tokenizer(text):
     result = re.sub('втб 24', 'втб', result)
     result = re.sub('втб24', 'втб', result)
 
-    result = ' '.join(pymorphy_tokenizer(result, tokenizer, morph))
+    result_tokenized = pymorphy_tokenizer(result, tokenizer, morph, True)
+    if len(entity.split()) == 1:
+        entity_position = result_tokenized.index(entity)
+        result = pymorphy_tokenizer(result, tokenizer, morph, False)
+        result[entity_position] = entity
+    elif len(entity.split()) == 2:
+        entity_position = result_tokenized.index(entity.split()[0])
+        result = pymorphy_tokenizer(result, tokenizer, morph, False)
+        result[entity_position] = entity.split()[0]
+        result[entity_position + 1] = entity.split()[1]
+
+    result = ' '.join(result)
     result = result.replace('внешторгбанк', 'втб')
     result = result.replace('газпром', 'газпромбанк')
     result = result.replace('сберыч', 'сбербанк')
@@ -782,15 +808,95 @@ def tweet_tokenizer(text):
     result = result.replace('райффазейный', 'райффайзенбанк')
     if 'альфа' in result:
         pos = result.find('альфа')
-        if result[pos  + 1] != 'б':
+        if result[pos + 6] != 'б' or pos + 6 > len(result):
             result = result.replace('альфа', 'альфа банк')
 
     if 'альф' in result:
         pos = result.find('альф')
-        if result[pos + 1] != ' ':
+        if result[pos + 5] != ' ' or pos + 5 > len(result):
             result = result.replace('альф', 'альфа банк')
     result = result.replace('сберлохоразвод', 'сбербанк лох развод')
     return result
+
+
+def tweet_tokenizer_new(text, entity):
+    patterns = {'alfa': 'альфабанк ',
+                'альф': 'альфабанк ',
+                'bm_twit': 'банкмосквы ',
+                'атб': 'банкмосквы ',
+                'sber': 'сбербанк ',
+                'сбер': 'сбербанк ',
+                'vtb': 'втб ',
+                'бтв': 'втб ',
+                'втб': 'втб ',
+                'внешторгбанк': 'втб ',
+                'raif': 'райффайзенбанк ',
+                'райф': 'райффайзенбанк ',
+                'rshb': 'россельхозбанк ',
+                'рсхб': 'россельхозбанк ',
+                'россельхоз': 'россельхозбанк ',
+                'gazprombank': 'газпромбанк ',
+                'газпромбанк': 'газпромбанк ',
+                'газпром': 'газпромбанк ',
+                'газром': 'газпромбанк ',
+                'уралсиб': 'уралсиб ',
+                }
+    bank = {'alfa': 'bank ',
+            'альф': 'банк ',
+            'bm_twit': 'банк ',
+            'атб': 'банк ',
+            'sber': 'bank ',
+            # 'sberbank cib': 'сбербанк',
+            'сбер': 'банк ',
+            'vtb': 'bank ',
+            'бтв': 'банк ',
+            'втб': 'банк ',
+            'внешторгбанк': 'банк ',
+            'raif': 'bank ',
+            'райф': 'банк ',
+            'rshb': 'bank ',
+            'рсхб': 'банк ',
+            'россельхоз': 'банк ',
+            'gazprombank': 'bank ',
+            'газпромбанк': 'банк ',
+            'газпром': 'банк ',
+            'газром': 'банк ',
+            'уралсиб': 'банк ',
+            }
+
+    text = text.lower()
+    for pattern in patterns.keys():
+        text = re.sub(
+            # r'[^\s]{0,}' + pattern + '[\w]{0,}(([\w\s-]{0,}' + bank[pattern] + '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}',
+            r'[^\s]{0,}' + pattern + '[\w]{0,}(([\s-]{0,}' + bank[pattern] + '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}',
+            patterns[pattern], text)
+
+    text = text.replace('банк москвы', 'банкмосквы')
+    text = text.replace('банка москвы', 'банкмосквы')
+    text = text.replace('сбербанк россии', 'сбербанк')
+    text = re.sub('rt', '', text)
+    text = re.sub('((www\.[^\s]+)|(https?://[^\s]+)|(http:/[^\w]))', '', text)
+    text = re.sub('@[^\s]{0,}', '', text)
+    text = re.sub('ё', 'е', text)
+    text = re.sub('&gt;', '', text)
+    text = re.sub('&amp;quot', '', text)
+    text = re.sub('#[^\s]{0,}', '', text)
+    text = re.sub('[^a-zA-Zа-яА-Я0-9():\-\,\.!?]+', ' ', text)
+
+    text = list(tokenize(text))
+    text = [_.text for _ in text]
+
+    # tw_tok = TweetTokenizer()
+    # text = tw_tok.tokenize(text)
+
+    # match = re.sub(r'[\s]{1,}', r' ', match)
+    # test = 'альфе банке !'
+    # # match = re.sub(r'[^\s]{1,}альф[\w\s-]{0,}банк[\w]{0,}[^\s\.,!?-]{0,}', r'Альфабанк', test)
+    # match = re.sub(r'[^\s]{0,}альф[\w\s-]{0,}(банк[^\s\.,!?-]{0,}){0,} ', r'Альфабанк', test)  # [\s-]{0,}
+    # print(match)
+
+    return ' '.join(text)
+    # return text
 
 
 def create_semeval_dataset(directory_path, file_name):
@@ -803,15 +909,16 @@ def create_semeval_dataset(directory_path, file_name):
              'raiffeisen': 'райффайзенбанк',
              'vtb': 'втб',
              'rshb': 'россельхозбанк',
-             'alfabank': 'альфа банк',
+             'alfabank': 'альфабанк',
              'gazprom': 'газпромбанк',
-             'bankmoskvy': 'банк москва',
+             'bankmoskvy': 'банкмосквы',
              'uralsib': 'уралсиб',
              }
     has_entity = []
     contexts_all = pd.read_csv(os.path.join(directory_path, file_name), sep='\t')
-    contexts_all['text_tok'] = contexts_all['text'].apply(lambda x: tweet_tokenizer(x))
     contexts_all['rus_entity'] = contexts_all['entity'].apply(lambda x: vocab[x])
+    # contexts_all['text_tok'] = contexts_all['text'].apply(lambda x: tweet_tokenizer(x))
+    contexts_all['text_tok'] = contexts_all[['text', 'rus_entity']].apply(lambda x: tweet_tokenizer_new(*x), axis=1)
 
     for i in range(len(contexts_all)):
         if contexts_all.iloc[i]['rus_entity'] in contexts_all.iloc[i]['text_tok']:
@@ -831,7 +938,9 @@ def main():
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
 
-    create_semeval_dataset(directory_path, 'bank_train_2016.csv')
+    create_semeval_dataset(directory_path, 'banks_test_etalon.csv')
+    # create_semeval_dataset(directory_path, 'bank_train_2016.csv')
+    # create_semeval_dataset(directory_path, 'cases.csv')
 
     # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
     # contexts_all = create_balanced_samples(contexts_all, volumes=[2000, 2000], volume_neutral=2000, top_words=[60, 25],
@@ -851,6 +960,9 @@ if __name__ == '__main__':
     # TODO извлечь нейтрально-смешанные контексты с двумя сущностями
     # TODO расширить текущую выборку на двойные + смешанные контексты
 
-    # TODO 2 новых эксперимента с semeval
+    # TODO эксперимент без lemmatization
+    # TODO 2 новых эксперимента с semeval banks
+    # TODO настройка датасета telecoms
+    # TODO 3 новых эксперимента с semeval telecoms
 
-
+    # TODO check if all texts contain pattern {sber, сбер....}
