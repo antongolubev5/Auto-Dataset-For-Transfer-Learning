@@ -718,16 +718,9 @@ def extract_neutral_contexts(directory_path):
     return df
 
 
-def tweet_tokenizer(text, entity):
+def tweet_tokenizer_old(text, entity):
     """
-    попытка сделать нормальный pipeline для очистки исходных твитов
-    что нужно:
-    -лемматизация
-    +удаление links www, http, rt, @users, иных ссылок с .ру
-    +чтобы в получившемся твите присутствовало имя из поля rus_entity, чтобы впоследствии его маскировать для берта
-    ?хештеги, вдруг там имя банка?
-    удалять мусорные символы &amp;quot;  - это уже заботы токенизатора
-    Проблема:
+    токенизатор с выделением сущностей через regexp
     """
     vocab_accounts = {'@alfa_bank': 'альфа банк',
                       '@alfabankby': 'альфа банк',
@@ -755,7 +748,7 @@ def tweet_tokenizer(text, entity):
                       '@rshbmedia': 'россельхозбанк',
                       '@belgazprombank': 'газпромбанк',
                       }
-    tw_tok = TweetTokenizer()
+    # tw_tok = TweetTokenizer()
     # result = ' '.join(tw_tok.tokenize(text))
     tokenizer = rutokenizer.Tokenizer()
     tokenizer.load()
@@ -819,7 +812,7 @@ def tweet_tokenizer(text, entity):
     return result
 
 
-def tweet_tokenizer_new(text, entity):
+def tweet_tokenizer(text, task):
     patterns = {'alfa': 'альфабанк ',
                 'альф': 'альфабанк ',
                 'bm_twit': 'банкмосквы ',
@@ -839,7 +832,23 @@ def tweet_tokenizer_new(text, entity):
                 'газпромбанк': 'газпромбанк ',
                 'газпром': 'газпромбанк ',
                 'газром': 'газпромбанк ',
-                'уралсиб': 'уралсиб ',
+                'билайн': ' билайн ',
+                'билаин': ' билайн ',
+                'биллайн': ' билайн ',
+                'beeline': ' билайн ',
+                'пчелайн': ' билайн ',
+                'вымпелком': ' билайн ',
+                'vimpelcom': ' билайн ',
+                'мегафон': 'мегафон ',
+                'мегафно': 'мегафон ',
+                'megafon': ' мегафон ',
+                'мтс': ' мтс ',
+                'mts': ' мтс ',
+                'ростел': ' ростелеком ',
+                'rostelecom': ' ростелеком ',
+                'теле2': ' теледва ',
+                'tele2': ' теледва ',
+                'skylink': ' скайлинк ',
                 }
     bank = {'alfa': 'bank ',
             'альф': 'банк ',
@@ -865,38 +874,39 @@ def tweet_tokenizer_new(text, entity):
             }
 
     text = text.lower()
-    for pattern in patterns.keys():
-        text = re.sub(
-            # r'[^\s]{0,}' + pattern + '[\w]{0,}(([\w\s-]{0,}' + bank[pattern] + '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}',
-            r'[^\s]{0,}' + pattern + '[\w]{0,}(([\s-]{0,}' + bank[pattern] + '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}',
-            patterns[pattern], text)
+    # for element in 'ё/,!':
+    #     text = re.sub(element, ' ' + element + ' ', text)
+    text = re.sub('&gt;', ' ', text)
+    text = re.sub('&amp;quot', ' ', text)
 
-    text = text.replace('банк москвы', 'банкмосквы')
-    text = text.replace('банка москвы', 'банкмосквы')
-    text = text.replace('сбербанк россии', 'сбербанк')
+    if task == 'banks':
+        for pattern in patterns.keys():
+            text = re.sub(
+                r'[^\s]{0,}' + pattern + '[\w]{0,}(([\s-]{0,}' + bank[pattern] + '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}',
+                patterns[pattern], text)
+        text = text.replace('банк москвы', 'банкмосквы')
+        text = text.replace('банка москвы', 'банкмосквы')
+        text = text.replace('сбербанк россии', 'сбербанк')
+
+    elif task == 'telecoms':
+        for pattern in patterns.keys():
+            text = re.sub('[^\s]{0,}' + pattern + '[\w2]{0,}', patterns[pattern], text)
+        for element in ['теле 2', 'теле-2', 'tele 2']:
+            text = text.replace(element, ' теледва ')
+        text = text.replace('мобильные телесистемы', ' мтс ')
+    else:
+        return 'no such option'
+
     text = re.sub('rt', '', text)
     text = re.sub('((www\.[^\s]+)|(https?://[^\s]+)|(http:/[^\w]))', '', text)
     text = re.sub('@[^\s]{0,}', '', text)
-    text = re.sub('ё', 'е', text)
-    text = re.sub('&gt;', '', text)
-    text = re.sub('&amp;quot', '', text)
     text = re.sub('#[^\s]{0,}', '', text)
     text = re.sub('[^a-zA-Zа-яА-Я0-9():\-\,\.!?]+', ' ', text)
 
     text = list(tokenize(text))
     text = [_.text for _ in text]
 
-    # tw_tok = TweetTokenizer()
-    # text = tw_tok.tokenize(text)
-
-    # match = re.sub(r'[\s]{1,}', r' ', match)
-    # test = 'альфе банке !'
-    # # match = re.sub(r'[^\s]{1,}альф[\w\s-]{0,}банк[\w]{0,}[^\s\.,!?-]{0,}', r'Альфабанк', test)
-    # match = re.sub(r'[^\s]{0,}альф[\w\s-]{0,}(банк[^\s\.,!?-]{0,}){0,} ', r'Альфабанк', test)  # [\s-]{0,}
-    # print(match)
-
     return ' '.join(text)
-    # return text
 
 
 def create_semeval_dataset(directory_path, file_name):
@@ -912,19 +922,21 @@ def create_semeval_dataset(directory_path, file_name):
              'alfabank': 'альфабанк',
              'gazprom': 'газпромбанк',
              'bankmoskvy': 'банкмосквы',
-             'uralsib': 'уралсиб',
+             'beeline': 'билайн',
+             'megafon': 'мегафон',
+             'mts': 'мтс',
+             'rostelecom': 'ростелеком',
+             'skylink': 'скайлинк',
+             'tele2': 'теледва',
+             'komstar': 'комстар',
              }
     has_entity = []
     contexts_all = pd.read_csv(os.path.join(directory_path, file_name), sep='\t')
     contexts_all['rus_entity'] = contexts_all['entity'].apply(lambda x: vocab[x])
-    # contexts_all['text_tok'] = contexts_all['text'].apply(lambda x: tweet_tokenizer(x))
-    contexts_all['text_tok'] = contexts_all[['text', 'rus_entity']].apply(lambda x: tweet_tokenizer_new(*x), axis=1)
+    contexts_all['text_tok'] = contexts_all['text'].apply(lambda x: tweet_tokenizer(x, 'telecoms'))
 
     for i in range(len(contexts_all)):
-        if contexts_all.iloc[i]['rus_entity'] in contexts_all.iloc[i]['text_tok']:
-            has_entity.append(1)
-        else:
-            has_entity.append(0)
+        has_entity.append(1 if contexts_all.iloc[i]['rus_entity'] in contexts_all.iloc[i]['text_tok'] else 0)
     contexts_all['has_entity'] = has_entity
 
     print(contexts_all['has_entity'].value_counts())
@@ -938,7 +950,7 @@ def main():
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
 
-    create_semeval_dataset(directory_path, 'banks_test_etalon.csv')
+    create_semeval_dataset(directory_path, 'tkk_test_etalon.csv')
     # create_semeval_dataset(directory_path, 'bank_train_2016.csv')
     # create_semeval_dataset(directory_path, 'cases.csv')
 
@@ -960,9 +972,7 @@ if __name__ == '__main__':
     # TODO извлечь нейтрально-смешанные контексты с двумя сущностями
     # TODO расширить текущую выборку на двойные + смешанные контексты
 
-    # TODO эксперимент без lemmatization
-    # TODO 2 новых эксперимента с semeval banks
     # TODO настройка датасета telecoms
     # TODO 3 новых эксперимента с semeval telecoms
 
-    # TODO check if all texts contain pattern {sber, сбер....}
+    # билайн, вымпелком, @Beeline_RUS, Vimpelcom, @BeelineKG
