@@ -649,12 +649,12 @@ def extract_neutral_contexts(directory_path):
                             tree = ET.parse(os.path.join(
                                 os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items', xml_file)))
                             title = tree.getroot()[0].text
-                            title_tok = pymorphy_tokenizer(title, tokenizer, morph)
+                            title_tok = pymorphy_tokenizer(title, tokenizer, morph, lemmatize=False)
                             if len(title_tok) < 250:
                                 title_after_ner = ner_model([title])
-                                if title_after_ner[1][0].count('B-PER') == 1 and not set(title_tok).intersection(
+                                if title_after_ner[1][0].count('B-ORG') == 1 and not set(title_tok).intersection(
                                         tonal_words):
-                                    person_in_title_start_idx = title_after_ner[1][0].index('B-PER')
+                                    person_in_title_start_idx = title_after_ner[1][0].index('B-ORG')
                                     person_in_title_idxs = [person_in_title_start_idx]
                                     for i in range(person_in_title_start_idx + 1, len(title_after_ner[1][0])):
                                         if title_after_ner[1][0][i] == 'I-PER':
@@ -671,25 +671,27 @@ def extract_neutral_contexts(directory_path):
                                                                xml_file[:-4] + '.txt')) as f_body:
                                             body = text2sentences(f_body.read(), nlp)
                                         for sentence in body:
-                                            sentence_tok = pymorphy_tokenizer(sentence, tokenizer, morph)
+                                            sentence_tok = pymorphy_tokenizer(sentence, tokenizer, morph,
+                                                                              lemmatize=False)
                                             if all(x in sentence.lower() for x in
                                                    person_in_title_full.lower().split()) and len(
                                                 sentence_tok) > 10 and len(sentence_tok) < 40:
                                                 sentence_after_ner = ner_model([sentence])
-                                                if 'B-PER' in sentence_after_ner[1][0]:
+                                                if 'B-ORG' in sentence_after_ner[1][0]:
                                                     person_in_body_start_idx = sentence_after_ner[1][0].index(
-                                                        'B-PER')
+                                                        'B-ORG')
                                                     person_in_body_idxs = [person_in_body_start_idx]
                                                     for i in range(person_in_body_start_idx + 1,
                                                                    len(sentence_after_ner[1][0])):
-                                                        if sentence_after_ner[1][0][i] == 'I-PER':
+                                                        if sentence_after_ner[1][0][i] == 'I-ORG':
                                                             person_in_body_idxs.append(i)
                                                         else:
                                                             break
                                                     person_in_body_full = [sentence_after_ner[0][0][i] for i in
                                                                            person_in_body_idxs]
                                                     sentence = sentence.replace(' '.join(person_in_body_full), 'MASK')
-                                                    sentence_tok = pymorphy_tokenizer(sentence, tokenizer, morph)
+                                                    sentence_tok = pymorphy_tokenizer(sentence, tokenizer, morph,
+                                                                                      lemmatize=False)
                                                     bodies.append(sentence)
                                                     bodies_tok.append(' '.join(sentence_tok).lower())
                                                     persons.append(' '.join(person_in_body_full).lower())
@@ -718,182 +720,181 @@ def extract_neutral_contexts(directory_path):
     return df
 
 
-def tweet_tokenizer_old(text, entity):
+def extract_neutral_banks_telecoms_contexts(directory_path):
     """
-    токенизатор с выделением сущностей через regexp
+    извлечение нейтральных контекстов про банки/операторы для расширения тренировочной выборки sentirueval2016
     """
-    vocab_accounts = {'@alfa_bank': 'альфа банк',
-                      '@alfabankby': 'альфа банк',
-                      'social@alfabank.ru': 'альфа банк',
-                      'smm@alfabank.ru': 'альфа банк',
-                      'alfa-bank': 'альфа банк',
-                      '@alfabank': 'альфа банк',
-                      'альфабанк': 'альфа банк',
-                      '@bm_twit': 'банк москва',
-                      'help@sberbank.ru': 'сбербанк',
-                      'sberbank cib': 'сбербанк',
-                      '@sberbank': 'сбербанк',
-                      '@russia_sberbank': 'сбербанк',
-                      '@сбербанк': 'сбербанк',
-                      '@bps_sberbank': 'сбербанк',
-                      'sberbank': 'сбербанк',
-                      'сбер ': 'сбербанк ',
-                      '@vtb': 'втб',
-                      '@raiffeisen_ru': 'райффайзенбанк',
-                      'райфайзен': 'райффайзенбанк',
-                      'райффайзен банк': 'райффайзенбанк',
-                      'raiffeisen bank': 'райффайзенбанк',
-                      'raiffeisenbank': 'райффайзенбанк',
-                      'raiffeisen': 'райффайзенбанк',
-                      '@rshbmedia': 'россельхозбанк',
-                      '@belgazprombank': 'газпромбанк',
-                      }
-    # tw_tok = TweetTokenizer()
-    # result = ' '.join(tw_tok.tokenize(text))
+    tonal_words = []
+    with open(os.path.join(directory_path, 'RuSentiLex2017_revised.txt')) as f:
+        for line in f:
+            line = re.sub(r"[\"]", "", line).lower()
+            words = line.strip().split(', ')
+            tonal_words.append(words[0])
+            tonal_words.append(words[2])
+            if len(words) > 5:
+                tonal_words += words[5:]
+    tonal_words = set(tonal_words)
+
+    # ner_model = build_model(configs.ner.ner_rus_bert, download=True)
+    nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
+    nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
     tokenizer = rutokenizer.Tokenizer()
     tokenizer.load()
     morph = pymorphy2.MorphAnalyzer()
 
-    text = text.lower()
-    result = re.sub('rt', '', text)
-    for account in vocab_accounts.keys():
-        if account in result:
-            result = re.sub(account, vocab_accounts[account], result)
-    # result = re.sub('((www\.[^\s]+)|(https?://[^\s]+))', 'URL', result)
-    result = re.sub('((www\.[^\s]+)|(https?://[^\s]+)|(http:/[^\w]))', '', result)
-    # тут нужно прописать исключения на @имена банков @alpha_bank @sberbank @vtb @raiffeisen_ru @RSHBmedia
+    bodies = []
+    bodies_tok = []
+    persons = []
 
-    # заменять ники нужно всегда, а маскировать в соответствие разметке
-    result = re.sub('@[^\s]+', '', result)
-    # result = re.sub('[^a-zA-Zа-яА-Я:):(]+', ' ', result) # удаляем смайлы
-    result = re.sub('ё', 'е', result)
-    result = re.sub('&gt;', '', result)
-    result = re.sub('[^a-zA-Zа-яА-Я0-9]+', ' ', result)
-    result = re.sub('втб 24', 'втб', result)
-    result = re.sub('втб24', 'втб', result)
+    for month in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source'))):
+        # if month == '201101':
+        for day in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month))):
+            # if day == '20110125':
+            for utf in tqdm(os.listdir(os.path.join(directory_path, 'Rambler_source', month, day))):
+                if os.path.exists(os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
+                    for xml_file in os.listdir(
+                            os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items')):
+                        tree = ET.parse(os.path.join(
+                            os.path.join(directory_path, 'Rambler_source', month, day, utf, 'items', xml_file)))
+                        title = tree.getroot()[0].text
+                        title_tok, entity = tweet_tokenizer(title, 'banks')
+                        title_tok_lemmatized = pymorphy_tokenizer(title, tokenizer, morph, lemmatize=True)
+                        if 7 < len(title_tok.split()) < 250 and entity is not None and not set(
+                                title_tok_lemmatized).intersection(tonal_words):
+                            bodies.append(title)
+                            bodies_tok.append(title_tok)
+                            persons.append(entity)
 
-    result_tokenized = pymorphy_tokenizer(result, tokenizer, morph, True)
-    if len(entity.split()) == 1:
-        entity_position = result_tokenized.index(entity)
-        result = pymorphy_tokenizer(result, tokenizer, morph, False)
-        result[entity_position] = entity
-    elif len(entity.split()) == 2:
-        entity_position = result_tokenized.index(entity.split()[0])
-        result = pymorphy_tokenizer(result, tokenizer, morph, False)
-        result[entity_position] = entity.split()[0]
-        result[entity_position + 1] = entity.split()[1]
+    data = {'person': persons, 'body': bodies, 'body_tok': bodies_tok}
+    df = pd.DataFrame.from_dict(data)
+    df['label'] = df['body_tok'].apply(lambda x: len(set(x.split()).intersection(tonal_words)))
+    df = df[df['label'] == 0]
+    df = df.drop(['label'], axis=1)
 
-    result = ' '.join(result)
-    result = result.replace('внешторгбанк', 'втб')
-    result = result.replace('газпром', 'газпромбанк')
-    result = result.replace('сберыч', 'сбербанк')
-    result = result.replace('сбер ', 'сбербанк ')
-    result = result.replace('sberbank', 'сбербанк')
-    result = result.replace('банка москва', 'банк москва')
-    result = result.replace('атб банк', 'банк москва')
-    result = result.replace('бм', 'банк москва')
-    result = result.replace('банкмосква ', 'банк москва')
-    result = result.replace('рсхб', 'россельхозбанк')
-    result = result.replace('россельхоз', 'россельхозбанк')
-    result = result.replace('бтв ', 'втб ')
-    result = result.replace('vtb ', 'втб ')
-    result = result.replace('газромбанк ', 'газпромбанк ')
-    result = result.replace('райффазейный', 'райффайзенбанк')
-    if 'альфа' in result:
-        pos = result.find('альфа')
-        if result[pos + 6] != 'б' or pos + 6 > len(result):
-            result = result.replace('альфа', 'альфа банк')
+    # df['has_body'] = df['body_tok'].apply(lambda x: 'mask' not in x)
+    # df = df[df['has_body'] == False]
+    # df = df.drop(['has_body'], axis=1)
 
-    if 'альф' in result:
-        pos = result.find('альф')
-        if result[pos + 5] != ' ' or pos + 5 > len(result):
-            result = result.replace('альф', 'альфа банк')
-    result = result.replace('сберлохоразвод', 'сбербанк лох развод')
-    return result
+    corpus = list(df['body_tok'])
+    vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
+    X = vectorizer.fit_transform(corpus)
+    X = cosine_similarity(X)
+    pairs = np.argwhere(X > 0.5).T
+    diag = pairs[0] != pairs[1]
+    pairs = pairs.T[diag]
+    numbers = np.unique(np.max(pairs, axis=1))
+    df = df.drop(index=df.iloc[numbers].index)
+
+    return df
 
 
 def tweet_tokenizer(text, task):
-    patterns = {'alfa': 'альфабанк ',
-                'альф': 'альфабанк ',
-                'bm_twit': 'банкмосквы ',
-                'атб': 'банкмосквы ',
-                'sber': 'сбербанк ',
-                'сбер': 'сбербанк ',
-                'vtb': 'втб ',
-                'бтв': 'втб ',
-                'втб': 'втб ',
-                'внешторгбанк': 'втб ',
-                'raif': 'райффайзенбанк ',
-                'райф': 'райффайзенбанк ',
-                'rshb': 'россельхозбанк ',
-                'рсхб': 'россельхозбанк ',
-                'россельхоз': 'россельхозбанк ',
-                'gazprombank': 'газпромбанк ',
-                'газпромбанк': 'газпромбанк ',
-                'газпром': 'газпромбанк ',
-                'газром': 'газпромбанк ',
-                'билайн': ' билайн ',
-                'билаин': ' билайн ',
-                'биллайн': ' билайн ',
-                'beeline': ' билайн ',
-                'пчелайн': ' билайн ',
-                'вымпелком': ' билайн ',
-                'vimpelcom': ' билайн ',
-                'мегафон': 'мегафон ',
-                'мегафно': 'мегафон ',
-                'megafon': ' мегафон ',
-                'мтс': ' мтс ',
-                'mts': ' мтс ',
-                'ростел': ' ростелеком ',
-                'rostelecom': ' ростелеком ',
-                'теле2': ' теледва ',
-                'tele2': ' теледва ',
-                'skylink': ' скайлинк ',
-                }
-    bank = {'alfa': 'bank ',
-            'альф': 'банк ',
-            'bm_twit': 'банк ',
-            'атб': 'банк ',
-            'sber': 'bank ',
-            # 'sberbank cib': 'сбербанк',
-            'сбер': 'банк ',
-            'vtb': 'bank ',
-            'бтв': 'банк ',
-            'втб': 'банк ',
-            'внешторгбанк': 'банк ',
-            'raif': 'bank ',
-            'райф': 'банк ',
-            'rshb': 'bank ',
-            'рсхб': 'банк ',
-            'россельхоз': 'банк ',
-            'gazprombank': 'bank ',
-            'газпромбанк': 'банк ',
-            'газпром': 'банк ',
-            'газром': 'банк ',
-            'уралсиб': 'банк ',
-            }
-
     text = text.lower()
     # for element in 'ё/,!':
     #     text = re.sub(element, ' ' + element + ' ', text)
     text = re.sub('&gt;', ' ', text)
     text = re.sub('&amp;quot', ' ', text)
+    entity = None
 
     if task == 'banks':
+        patterns = {'альф': ' альфабанк ',
+                    # 'alfa': 'альфабанк ',
+                    'bm_twit': ' банкмосквы ',
+                    'атб': ' банкмосквы ',
+                    'sberbank': ' сбербанк ',
+                    # 'sber': 'сбербанк ',
+                    'сбербанк': ' сбербанк ',
+                    # 'сбер': 'сбербанк ',
+                    'vtb': ' втб ',
+                    'юникредит': ' юникредит ',
+                    'бтв': ' втб ',
+                    'втб': ' втб ',
+                    'внешторгбанк': ' втб ',
+                    'raif': ' райффайзенбанк ',
+                    'райф': ' райффайзенбанк ',
+                    'rshb': ' россельхозбанк ',
+                    'рсхб': ' россельхозбанк ',
+                    'россельхозб': ' россельхозбанк ',
+                    'промсвязьбанк': ' промсвязьбанк ',
+                    'gazprombank': ' газпромбанк ',
+                    'газпромбанк': ' газпромбанк ',
+                    # 'газпром': 'газпромбанк ',
+                    # 'газром': 'газпромбанк ',
+                    'уралсиб': ' уралсиб ',
+                    'мдм': ' мдм ',
+                    'бинбанк': ' бинбанк ',
+                    'транскредитбанк': ' транскредитбанк ',
+                    'инвестторгбанк': ' инвестторгбанк ',
+                    }
+        bank = {'альф': 'банк ',
+                # 'alfa': 'bank ',
+                'bm_twit': 'банк ',
+                'атб': 'банк ',
+                # 'sber': 'bank ',
+                'sberbank': 'bank ',
+                # 'sberbank cib': 'сбербанк',
+                # 'сбер': 'банк ',
+                'сбербанк': 'банк ',
+                'юникредит': 'банк ',
+                'vtb': 'bank ',
+                'транскредитбанк': 'банк ',
+                'промсвязьбанк': 'банк ',
+                'бтв': 'банк ',
+                'втб': 'банк ',
+                'внешторгбанк': 'банк ',
+                'raif': 'bank ',
+                'райф': 'банк ',
+                'rshb': 'bank ',
+                'рсхб': 'банк ',
+                'россельхозб': 'банк ',
+                'gazprombank': 'bank ',
+                'газпромбанк': 'банк ',
+                # 'газпром': 'банк ',
+                # 'газром': 'банк ',
+                'уралсиб': 'банк ',
+                'мдм': 'банк ',
+                'бинбанк': 'банк ',
+                'инвестторгбанк': ' банк ',
+                }
         for pattern in patterns.keys():
-            text = re.sub(
-                r'[^\s]{0,}' + pattern + '[\w]{0,}(([\s-]{0,}' + bank[pattern] + '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}',
-                patterns[pattern], text)
-        text = text.replace('банк москвы', 'банкмосквы')
-        text = text.replace('банка москвы', 'банкмосквы')
-        text = text.replace('сбербанк россии', 'сбербанк')
-
+            text = re.sub(r'[\s]{0,}' + pattern + '[\w]{0,}(([\s-]{0,}' + bank[pattern] +
+                          '[^\s\.,!?-]{0,2})[\s\.,!?-]){0,}', ' ' + patterns[pattern], text)
+        text = text.replace('банк москвы', 'банкмосквы ')
+        text = text.replace('банка москвы', 'банкмосквы ')
+        text = re.sub('втб\s+24', 'втб', text)
+        text = text.replace('сбербанк россии', 'сбербанк ')
+        for value in patterns.values():
+            if value in text:
+                entity = value
+                break
     elif task == 'telecoms':
+        patterns = {'билайн': ' билайн ',
+                    'билаин': ' билайн ',
+                    'биллайн': ' билайн ',
+                    'beeline': ' билайн ',
+                    'пчелайн': ' билайн ',
+                    'вымпелком': ' билайн ',
+                    'vimpelcom': ' билайн ',
+                    'мегафон': 'мегафон ',
+                    'мегафно': 'мегафон ',
+                    'megafon': ' мегафон ',
+                    'мтс': ' мтс ',
+                    'mts': ' мтс ',
+                    'ростел': ' ростелеком ',
+                    'rostelecom': ' ростелеком ',
+                    'теле2': ' теледва ',
+                    'tele2': ' теледва ',
+                    'skylink': ' скайлинк ',
+                    }
         for pattern in patterns.keys():
             text = re.sub('[^\s]{0,}' + pattern + '[\w2]{0,}', patterns[pattern], text)
         for element in ['теле 2', 'теле-2', 'tele 2']:
             text = text.replace(element, ' теледва ')
         text = text.replace('мобильные телесистемы', ' мтс ')
+        for value in patterns.values():
+            if value in text:
+                entity = value
+                break
     else:
         return 'no such option'
 
@@ -902,11 +903,13 @@ def tweet_tokenizer(text, task):
     text = re.sub('@[^\s]{0,}', '', text)
     text = re.sub('#[^\s]{0,}', '', text)
     text = re.sub('[^a-zA-Zа-яА-Я0-9():\-\,\.!?]+', ' ', text)
-
+    text = re.sub('-банк[\w\s]', '', text)
+    text = re.sub('\sбанк\s', '', text)
     text = list(tokenize(text))
     text = [_.text for _ in text]
+    text = ' '.join(text)
 
-    return ' '.join(text)
+    return text, entity
 
 
 def create_semeval_dataset(directory_path, file_name):
@@ -944,22 +947,36 @@ def create_semeval_dataset(directory_path, file_name):
     contexts_all.to_csv(os.path.join(directory_path, file_name[:-4] + '_cleaned.csv'), index=False, sep='\t')
 
 
+def simple_tokenizer(text):
+    text = text.lower()
+    text = re.sub('\(\[\]\)', '', text)
+    text = re.sub('\d\d:\d\d:\d\d', '', text)
+    text = re.sub('\d\d:\d\d', '', text)
+    text = re.sub('\d\d\d\d-\d\d-\d\d', '', text)
+    text = re.sub('((www\.[^\s]+)|(https?://[^\s]+)|(http:/[^\w]))', '', text)
+    text = re.sub('@[^\s]{0,}', '', text)
+    text = re.sub('#[^\s]{0,}', '', text)
+    text = re.sub('[^a-zA-Zа-яА-Я0-9():\-\,\.!?]+', ' ', text)
+    text = tokenize(text)
+    text = [_.text for _ in text]
+    return ' '.join(text)
+
+
 def main():
     start_time = time.time()
 
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis'
     entities_vocab = vocab_from_file(directory_path, ['nouns_person_neg', 'nouns_person_pos'])
 
-    create_semeval_dataset(directory_path, 'tkk_test_etalon.csv')
-    # create_semeval_dataset(directory_path, 'bank_train_2016.csv')
-    # create_semeval_dataset(directory_path, 'cases.csv')
+    df = pd.read_csv(os.path.join(directory_path, 'new.csv'), sep='\t')
 
+    # contexts_task = pd.read_csv(os.path.join(directory_path, 'tkk_train_2016_cleaned.csv'), sep='\t')
     # contexts_all = pd.read_csv(os.path.join(directory_path, 'single_contexts.csv'), sep='\t')
-    # contexts_all = create_balanced_samples(contexts_all, volumes=[2000, 2000], volume_neutral=2000, top_words=[60, 25],
-    #                                        drop_volume=[1, 1])
-    # contexts_all.to_csv(os.path.join(directory_path, 'single_balanced_contexts_2neg_2pos_2neutral.csv'), index=False, sep='\t')
-    # plot_words_distribution(contexts_all, sentiment=-1, volume=75, save=False)
-    # plot_words_distribution(contexts_all, sentiment=1, volume=-1, save=False)
+    #
+    # for label, num in contexts_task['label'].value_counts().items():
+    #     contexts_task = contexts_task.append(contexts_all[contexts_all['label'] == label][:num // 3])
+    #
+    # contexts_task.to_csv(os.path.join(directory_path, 'task_and_weighted_contexts.csv'), sep='\t', index=False)
 
     total_time = round((time.time() - start_time))
     print("Time elapsed: %s minutes %s seconds" % ((total_time // 60), round(total_time % 60)))
@@ -972,7 +989,5 @@ if __name__ == '__main__':
     # TODO извлечь нейтрально-смешанные контексты с двумя сущностями
     # TODO расширить текущую выборку на двойные + смешанные контексты
 
-    # TODO настройка датасета telecoms
-    # TODO 3 новых эксперимента с semeval telecoms
-
-    # билайн, вымпелком, @Beeline_RUS, Vimpelcom, @BeelineKG
+    # TODO дообучение модели
+    # TODO набрать нейтральных банковских/операторных контекстов из рамблера и попробовать еще раз
