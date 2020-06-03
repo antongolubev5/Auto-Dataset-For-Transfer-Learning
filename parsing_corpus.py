@@ -17,7 +17,7 @@ from numpy import dot
 from numpy.linalg import norm
 from sklearn.metrics.pairwise import cosine_similarity
 import pymorphy2
-import rutokenizer
+# import rutokenizer
 from deeppavlov import configs, build_model
 from nltk.tokenize import TweetTokenizer
 from razdel import tokenize
