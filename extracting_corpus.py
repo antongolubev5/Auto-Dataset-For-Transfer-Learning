@@ -27,6 +27,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
     # 10 архивов повреждено, распаковать не удалось
 # [
 #     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201103/20110321/20110321015054_utf.rar',
