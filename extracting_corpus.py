@@ -3,8 +3,9 @@ import patoolib
 from patoolib.util import PatoolError
 
 
-def main():
-    """разархивация корпуса, плохие архивы удаляются
+def parsing_corpus():
+    """
+    разархивация корпуса, плохие архивы удаляются
     """
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source'
     bad_files = []
@@ -23,6 +24,10 @@ def main():
                         pass
                     os.remove(rarname)
     print(bad_files)
+
+
+def main():
+    parsing_corpus()
 
 
 if __name__ == '__main__':

@@ -84,7 +84,8 @@ def pymorphy_tokenizer(text, tokenizer, morph, lemmatize: bool):
 
 
 def spacy_tokenizer(text, lemm: bool, nlp):
-    """токенизатор на основе библиотеки spacy, учитывающий особенности русского языка
+    """
+    токенизатор на основе библиотеки spacy, учитывающий особенности русского языка
     spacy_russian_tokenizer --- токенизация
     spacy_ru2 --- лемматизация (как параметр)
     стоп слова?
@@ -219,7 +220,7 @@ def searching_contexts(directory_path, entities_vocabs: list, sentences_file, co
 
     with open(os.path.join(directory_path, sentences_file), 'r') as corpus_sentences:
         firstNlines = corpus_sentences.readlines()
-
+    cnt = 0
     for line in tqdm(firstNlines):
         line_tok = spacy_tokenizer(line, True)
         if any(word in list_entities_vocab_keys for word in line_tok):
@@ -552,7 +553,7 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
         # context_text = raw_data.iloc[i]['sentence']
         context_text = raw_data[i].strip()
         context_tok = pymorphy_tokenizer(context_text, tokenizer, morph)
-        if any(word in entities_vocab for word in context_tok) and len(context_tok) > 10 and len(context_tok) < 40:
+        if any(word in entities_vocab for word in context_tok) and 10 < len(context_tok) < 40:
             flag, sentiment_words = check_sentiment_of_sentence(context_tok, entities_vocab)
             quotes = False
             for sentiment_word in sentiment_words:
@@ -984,5 +985,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # TODO дообучение модели и сравнение результатов со смесью
-    # TODO набрать нейтральных банковских/операторных контекстов с помощью NER
