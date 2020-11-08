@@ -6,7 +6,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
 import time
-from pymystem3 import Mystem
+# from pymystem3 import Mystem
 from string import punctuation
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,11 +16,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from numpy import dot
 from numpy.linalg import norm
 from sklearn.metrics.pairwise import cosine_similarity
+from spacy.lang.ru import Russian
 import pymorphy2
 # import rutokenizer
-from deeppavlov import configs, build_model
+# from deeppavlov import configs, build_model
 from nltk.tokenize import TweetTokenizer
-from razdel import tokenize
+# from razdel import tokenize
 
 spacy.prefer_gpu()
 
@@ -93,8 +94,8 @@ def spacy_tokenizer(text, lemm: bool, nlp):
     в репо написано использовать ru2e, но не работает
     """
 
-    # nlp = spacy.load('/media/anton/ssd2/data/datasets/spacy-ru/ru2')
-    # # nlp = spacy.load('ru2', disable=['tagger', 'parser', 'NER'])
+    nlp = spacy.load('/home/anton/PycharmProjects/spacy-ru/ru2e')
+    # nlp = spacy.load('ru2', disable=['tagger', 'parser', 'NER'])
     # nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
     # doc = nlp(text)
 
