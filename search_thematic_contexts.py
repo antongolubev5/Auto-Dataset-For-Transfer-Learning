@@ -1,4 +1,5 @@
 from parsing_corpus import *
+import pandas as pd
 from tqdm import tqdm
 import os
 from deeppavlov import configs, build_model
@@ -30,27 +31,42 @@ def search_thematic_contexts():
 
     with open(os.path.join('/home/anton/data/ABSA/contexts/txt', 'contexts_for_labeled_entities_2'),
               'r') as corpus_sentences:
-        firstNlines = corpus_sentences.readlines()[:30000]
+        firstNlines = corpus_sentences.readlines()[100000:700000]
 
     nlp = spacy.load('/home/anton/PycharmProjects/spacy-ru/ru2e')
     ner_model = build_model(configs.ner.ner_rus_bert, download=True)
 
     for line in tqdm(firstNlines):
         line_tok = spacy_tokenizer(line.strip(), True, nlp)
-        line_tok_after_ner = ner_model([line])
-        if (not set(line_tok).intersection(tonal_vocab)) \
-                and 'B-ORG' in line_tok_after_ner[1][0] \
-                and 'банк' in line.lower()\
-                and len(line_tok) < 400:
-            contexts.append(line + '===' + ' '.join(line_tok))
+        try:
+            line_tok_after_ner = ner_model([line])
+            if (not set(line_tok).intersection(tonal_vocab)) \
+                    and 'B-ORG' in line_tok_after_ner[1][0] \
+                    and 'банк' in line.lower() \
+                    and len(line_tok) < 200:
+                contexts.append(line + '===' + ' '.join(line_tok))
+        except RuntimeError:
+            continue
 
-    with open('neutral_bank_contexts.txt', 'w') as f:
+    with open('neutral_bank_contexts_100_700.txt', 'w') as f:
         for line in contexts:
             f.write(line + '\n')
 
 
+def txt2csv():
+    """
+    преобразование формата
+    """
+    with open('neutral_bank_contexts_100_700.txt', 'r') as f:
+        contexts = f.readlines()
+    contexts_cleaned = [context.split('===')[0].strip() for context in contexts if context[0] != '=']
+    df = pd.DataFrame(data={'sentence': contexts_cleaned})
+    df.to_csv('neutral_banks_contexts_700.csv', index=False, sep='\t')
+
+
 def main():
-    search_thematic_contexts()
+    # search_thematic_contexts()
+    txt2csv()
 
 
 if __name__ == '__main__':
