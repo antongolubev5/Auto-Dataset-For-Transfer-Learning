@@ -902,8 +902,8 @@ def tweet_tokenizer(text, task):
 
     text = re.sub('rt', '', text)
     text = re.sub('((www\.[^\s]+)|(https?://[^\s]+)|(http:/[^\w]))', '', text)
-    text = re.sub('@[^\s]{0,}', '', text)
-    text = re.sub('#[^\s]{0,}', '', text)
+    text = re.sub('@[^\s]*', '', text)
+    text = re.sub('#[^\s]*', '', text)
     text = re.sub('[^a-zA-Zа-яА-Я0-9():\-\,\.!?]+', ' ', text)
     text = re.sub('-банк[\w\s]', '', text)
     text = re.sub('\sбанк\s', '', text)
