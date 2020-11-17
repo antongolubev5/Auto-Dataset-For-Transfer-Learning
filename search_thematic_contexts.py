@@ -99,7 +99,8 @@ def clean_contexts(tokenization=False, tf_idf=False, find_entity=False, mask_ent
 def main():
     # search_thematic_contexts()
     # txt2csv()
-    clean_contexts(tokenization=True, tf_idf=True, find_entity=True, mask_entity=True)
+    # clean_contexts(tokenization=True, tf_idf=True, find_entity=True, mask_entity=True)
+    pass
 
 
 if __name__ == '__main__':
