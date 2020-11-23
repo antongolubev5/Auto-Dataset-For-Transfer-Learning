@@ -19,10 +19,17 @@ warnings.filterwarnings("ignore")
 """
 
 
-def search_thematic_contexts():
+def search_thematic_contexts(banks_or_operators='banks'):
     """
-    поиск тематических контекстов (нейтральные банки)
+    поиск нейтральных тематических контекстов (банки/операторы)
     """
+    if banks_or_operators == 'banks':
+        theme_words = ['банк']
+    elif banks_or_operators == 'telecom':
+        theme_words = ['мтс', 'билайн', 'мегафон']
+    else:
+        theme_words = []
+
     contexts = []
     tonal_vocab = []
     with open('/home/anton/data/ABSA/contexts/txt/RuSentiLex2017_revised.txt', 'r') as f:
@@ -33,7 +40,7 @@ def search_thematic_contexts():
 
     with open(os.path.join('/home/anton/data/ABSA/contexts/txt', 'contexts_for_labeled_entities_2'),
               'r') as corpus_sentences:
-        firstNlines = corpus_sentences.readlines()[700000:1300000]
+        firstNlines = corpus_sentences.readlines()[500000:1000000]
 
     nlp = spacy.load('/home/anton/PycharmProjects/spacy-ru/ru2e')
     ner_model = build_model(configs.ner.ner_rus_bert, download=True)
@@ -42,28 +49,34 @@ def search_thematic_contexts():
         line_tok = spacy_tokenizer(line.strip(), True, nlp)
         try:
             line_tok_after_ner = ner_model([line])
+            # if (not set(line_tok).intersection(tonal_vocab)) \
+            #         and 'B-ORG' in line_tok_after_ner[1][0] \
+            #         and any(word in theme_words for word in line.lower()) \
+            #         and len(line_tok) < 200:
             if (not set(line_tok).intersection(tonal_vocab)) \
-                    and 'B-ORG' in line_tok_after_ner[1][0] \
-                    and 'банк' in line.lower() \
+                    and ('мтс' in line.lower() or 'мегафон' in line.lower() or 'билайн' in line.lower()) \
                     and len(line_tok) < 200:
                 contexts.append(line + '===' + ' '.join(line_tok))
         except RuntimeError:
             continue
 
-    with open('neutral_bank_contexts_700_1300.txt', 'w') as f:
+    with open('neutral_telecom_contexts_2.txt', 'w') as f:
         for line in contexts:
             f.write(line + '\n')
 
 
 def txt2csv():
     """
-    преобразование формата
+    преобразование формата txt -> csv
     """
-    with open('neutral_bank_contexts_700_1300.txt', 'r') as f:
+    file_from = 'neutral_bank_contexts_700_1300.txt'
+    file_to = 'neutral_banks_contexts_1300.csv'
+
+    with open(file_from, 'r') as f:
         contexts = f.readlines()
     contexts_cleaned = [context.split('===')[0].strip() for context in contexts if context[0] != '=']
     df = pd.DataFrame(data={'sentence': contexts_cleaned})
-    df.to_csv('neutral_banks_contexts_1300.csv', index=False, sep='\t')
+    df.to_csv(file_to, index=False, sep='\t')
 
 
 def clean_contexts(tokenization=False, tf_idf=False, find_entity=False, mask_entity=False):
@@ -97,10 +110,9 @@ def clean_contexts(tokenization=False, tf_idf=False, find_entity=False, mask_ent
 
 
 def main():
-    # search_thematic_contexts()
+    search_thematic_contexts(banks_or_operators='telecom')
     # txt2csv()
     # clean_contexts(tokenization=True, tf_idf=True, find_entity=True, mask_entity=True)
-    pass
 
 
 if __name__ == '__main__':
