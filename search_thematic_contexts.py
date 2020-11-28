@@ -40,7 +40,7 @@ def search_thematic_contexts(banks_or_operators='banks'):
 
     with open(os.path.join('/home/anton/data/ABSA/contexts/txt', 'contexts_for_labeled_entities_2'),
               'r') as corpus_sentences:
-        firstNlines = corpus_sentences.readlines()[500000:1000000]
+        firstNlines = corpus_sentences.readlines()[1750000:2000000]
 
     nlp = spacy.load('/home/anton/PycharmProjects/spacy-ru/ru2e')
     ner_model = build_model(configs.ner.ner_rus_bert, download=True)
@@ -60,7 +60,7 @@ def search_thematic_contexts(banks_or_operators='banks'):
         except RuntimeError:
             continue
 
-    with open('neutral_telecom_contexts_2.txt', 'w') as f:
+    with open('neutral_telecom_contexts_5.txt', 'w') as f:
         for line in contexts:
             f.write(line + '\n')
 
