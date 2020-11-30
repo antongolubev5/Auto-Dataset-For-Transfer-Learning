@@ -65,13 +65,10 @@ def search_thematic_contexts(banks_or_operators='banks'):
             f.write(line + '\n')
 
 
-def txt2csv():
+def txt2csv(file_from, file_to):
     """
     преобразование формата txt -> csv
     """
-    file_from = 'neutral_bank_contexts_700_1300.txt'
-    file_to = 'neutral_banks_contexts_1300.csv'
-
     with open(file_from, 'r') as f:
         contexts = f.readlines()
     contexts_cleaned = [context.split('===')[0].strip() for context in contexts if context[0] != '=']
@@ -79,11 +76,11 @@ def txt2csv():
     df.to_csv(file_to, index=False, sep='\t')
 
 
-def clean_contexts(tokenization=False, tf_idf=False, find_entity=False, mask_entity=False):
+def clean_contexts(file_name, tokenization=False, tf_idf=False, find_entity=False, mask_entity=False):
     """
     чистка набора предложений и его подготовка к использованию в BERT
     """
-    contexts = pd.read_csv('neutral_banks_contexts_init.csv', sep='\t')
+    contexts = pd.read_csv(file_name, sep='\t')
     if tokenization:
         nlp = spacy.load('/home/anton/PycharmProjects/spacy-ru/ru2e')
         contexts['text_tok'] = contexts['text'].apply(lambda x: ' '.join(spacy_tokenizer(x, False, nlp)))
@@ -106,13 +103,13 @@ def clean_contexts(tokenization=False, tf_idf=False, find_entity=False, mask_ent
     if mask_entity:
         contexts['text_tok'] = contexts['text_tok'].apply(lambda x: re.sub('\s*\S*банк\S*\s*', ' MASK ', x))
 
-    contexts.to_csv('neutral_banks_contexts.csv', index=False, sep='\t')
+    contexts.to_csv(file_name[:-4] + '_cleaned.csv', index=False, sep='\t')
 
 
 def main():
-    search_thematic_contexts(banks_or_operators='telecom')
-    # txt2csv()
-    # clean_contexts(tokenization=True, tf_idf=True, find_entity=True, mask_entity=True)
+    # search_thematic_contexts(banks_or_operators='telecom')
+    # txt2csv('neutral_telecom_contexts_5.txt', 'neutral_telecom_contexts_5.csv')
+    clean_contexts('neutral_telecom_contexts.csv', tokenization=True, tf_idf=True, find_entity=True, mask_entity=True)
 
 
 if __name__ == '__main__':
