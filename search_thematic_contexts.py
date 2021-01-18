@@ -120,7 +120,7 @@ def clean_telecom_contexts(file_name, tokenization=False, tf_idf=False, find_ent
         vectorizer = TfidfVectorizer(min_df=0.002, use_idf=True, ngram_range=(1, 1))
         X = vectorizer.fit_transform(corpus)
         X = cosine_similarity(X)
-        pairs = np.argwhere(X > 0.8).T
+        pairs = np.argwhere(X > 0.95).T
         diag = pairs[0] != pairs[1]
         pairs = pairs.T[diag]
         numbers = np.unique(np.max(pairs, axis=1))
@@ -131,9 +131,69 @@ def clean_telecom_contexts(file_name, tokenization=False, tf_idf=False, find_ent
         contexts = contexts[contexts['has_bank'] == 1]
 
     if mask_entity:
-        contexts['text_tok'] = contexts['text_tok'].apply(lambda x: re.sub('\s*\S*банк\S*\s*', ' MASK ', x))
+        contexts['texts_tok'] = contexts.apply(lambda row: row.texts_tok.replace(row.entity, 'MASK'), axis=1)
 
     contexts.to_csv(file_name[:-4] + '_cleaned.csv', index=False, sep='\t')
+
+
+def multiply_sentences_with_several_entities(file_name):
+    """
+    для предложений с несколькими объектами дублируем предложения, маскируя все объекты поочередно
+    """
+    contexts = pd.read_csv(file_name, sep='\t')
+    texts = []
+    texts_tok = []
+    entities = []
+
+    for i in range(len(contexts)):
+        if contexts.iloc[i]['mts_in'] == 1:
+            texts.append(contexts.iloc[i]['text'])
+            texts_tok.append(contexts.iloc[i]['text_tok'])
+            entities.append('мтс')
+
+        if contexts.iloc[i]['beeline_in'] == 1:
+            texts.append(contexts.iloc[i]['text'])
+            texts_tok.append(contexts.iloc[i]['text_tok'])
+            entities.append('билайн')
+
+        if contexts.iloc[i]['megafon_in'] == 1:
+            texts.append(contexts.iloc[i]['text'])
+            texts_tok.append(contexts.iloc[i]['text_tok'])
+            entities.append('мегафон')
+
+    contexts_multiplied = pd.DataFrame({'text': texts, 'texts_tok': texts_tok, 'entity': entities})
+    contexts_multiplied.to_csv('neutral_telecom_multiplied.csv', index=False, sep='\t')
+
+
+def calculate_delta():
+    """
+    вычисление прироста по метрикам
+    """
+    operators_vanilla = np.array([[80.47, 72.59, 80.22, 66.95, 69.46],
+                                  [82.28, 74.06, 81.24, 69.53, 71.76],
+                                  [81.28, 73.34, 81.63, 65.82, 68.03]])
+
+    operators_pretrained = np.array([[80.32, 71.34, 81.39, 66.44, 69.24],
+                                     [83.79, 76.17, 82.41, 71.09, 72.97],
+                                     [82.72, 75.08, 82.57, 67.71, 70.28]])
+
+    delta = np.zeros(5)
+    for i in range(len(delta)):
+        delta[i] = np.mean([(operators_pretrained[0][i] - operators_vanilla[0][i]) / operators_vanilla[0][i] * 100,
+                            (operators_pretrained[1][i] - operators_vanilla[1][i]) / operators_vanilla[1][i] * 100,
+                            (operators_pretrained[2][i] - operators_vanilla[2][i]) / operators_vanilla[2][i] * 100])
+    print(delta)
+
+
+def augmentation():
+    """
+    аугментация 4 различными способами:
+    -Замена n различных слов синонимами
+    -Вставка n различных синонимов в предложение
+    -N различных перестановок соседствующих слов в предложении
+    -Удаление n различных слов из предложения
+    """
+    pass
 
 
 def main():
@@ -141,8 +201,11 @@ def main():
     # txt2csv('neutral_telecom_contexts_9.txt', 'neutral_telecom_contexts_9.csv')
     # clean_banks_contexts('neutral_banks_contexts.csv', tokenization=True, tf_idf=True, find_entity=True,
     #                     mask_entity=True)
-    clean_telecom_contexts('neutral_telecom_contexts.csv', tokenization=False, tf_idf=False, find_entity=False,
-                           mask_entity=False)
+    # clean_telecom_contexts('neutral_telecom_multiplied.csv', tokenization=False, tf_idf=False, find_entity=False,
+    #                        mask_entity=True)
+    # multiply_sentences_with_several_entities('neutral_telecom_contexts_cleaned.csv')
+    # calculate_delta()
+    augmentation()
 
 
 if __name__ == '__main__':
