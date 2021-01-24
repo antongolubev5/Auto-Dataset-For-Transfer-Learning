@@ -1,3 +1,6 @@
+import gensim
+from gensim.models import Word2Vec
+
 from parsing_corpus import *
 import pandas as pd
 from tqdm import tqdm
@@ -167,7 +170,7 @@ def multiply_sentences_with_several_entities(file_name):
 
 def calculate_delta():
     """
-    вычисление прироста по метрикам
+    вычисление прироста по метрикам после предобучения на собранной выборке контекстов
     """
     operators_vanilla = np.array([[80.47, 72.59, 80.22, 66.95, 69.46],
                                   [82.28, 74.06, 81.24, 69.53, 71.76],
@@ -193,7 +196,10 @@ def augmentation():
     -N различных перестановок соседствующих слов в предложении
     -Удаление n различных слов из предложения
     """
-    pass
+    mdl = Word2Vec.load('ruwikiruscorpora_upos_skipgram_300_2_2018.vec')
+    mdl = gensim.models.KeyedVectors.load_word2vec_format('ruscorpora_1_300_10.bin.gz', binary=True)
+    for n in mdl.most_similar(positive=['пожар_NOUN']):
+        print(n[0], n[1])
 
 
 def main():
