@@ -5,7 +5,7 @@ from patoolib.util import PatoolError
 
 def parsing_corpus():
     """
-    разархивация корпуса, плохие архивы удаляются
+    разархивация корпуса, поврежденные архивы удаляются
     """
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source'
     bad_files = []
@@ -32,16 +32,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-    # 10 архивов повреждено, распаковать не удалось
-# [
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201103/20110321/20110321015054_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201103/20110321/20110321021057_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201103/20110321/20110321020103_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201103/20110313/20110313181758_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201101/20110105/20110105105014_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201101/20110105/20110105092645_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201101/20110105/20110105091640_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201101/20110105/20110105093705_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201101/20110105/20110105110108_utf.rar',
-#     '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source/201101/20110105/20110105103935_utf.rar']
