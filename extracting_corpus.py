@@ -5,7 +5,7 @@ from patoolib.util import PatoolError
 
 def parsing_corpus():
     """
-    разархивация корпуса, поврежденные архивы удаляются
+    разархивация, поврежденные архивы удаляются
     """
     directory_path = '/media/anton/ssd2/data/datasets/aspect-based-sentiment-analysis/Rambler_source'
     bad_files = []
