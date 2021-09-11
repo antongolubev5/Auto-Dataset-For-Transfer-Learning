@@ -1,2 +1,1 @@
-* Решение задачи aspect-based sentiment analysis. Создание обучающей выборки из новостного корпуса Рамблер.
-* Размеченные по тональности слова: https://yadi.sk/d/8lWpAnjMGrnUPA
+This repository provides a source code and data for the paper "Multi-Step Transfer Learning for Sentiment Analysis" (Anton Golubev and Natalia Loukachevitch, NLDB 2021)
