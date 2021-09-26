@@ -1,6 +1,6 @@
 def extract_nouns_and_adjs():
     """
-    Выделение существительных и прилагательных из словаря Русентилекс
+    Выделение описательных существительных и прилагательных из словаря Русентилекс
     """
     ru_senti_lex = open('/home/anton/data/ABSA/contexts/txt/RuSentiLex', 'r')
     nouns_pos = open('/home/anton/data/ABSA/contexts/txt/nouns_pos', 'w')

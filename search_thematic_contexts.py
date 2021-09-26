@@ -9,22 +9,11 @@ from deeppavlov import configs, build_model
 import warnings
 
 warnings.filterwarnings("ignore")
-"""
-Я думала, что результат возможно улучшить тем, что в нейтральные контексты набрать именно контексты для банков,
-т.е. взять тот же список банков, и если вокруг нет явных тональностей, то считать контекст нейтральным.
-
-применяем весь русентилекс
-/home/anton/data/ABSA/contexts/txtRuSentiLex2017_revised.txt
-
-файлы с предложениями:
-/home/anton/data/ABSA/contexts/txt/contexts_for_labeled_entities_2
-/home/anton/data/ABSA/contexts/txt/contexts_for_labeled_entities_3
-"""
 
 
 def search_thematic_contexts(banks_or_operators='banks'):
     """
-    поиск нейтральных тематических контекстов (банки/операторы)
+    поиск нейтральных тематических контекстов в передаваемом предложении
     """
     if banks_or_operators == 'banks':
         theme_words = ['банк']
@@ -81,7 +70,7 @@ def txt2csv(file_from, file_to):
 
 def clean_banks_contexts(file_name, tokenization=False, tf_idf=False, find_entity=False, mask_entity=False):
     """
-    чистка банковских контекстов и их подготовка к подаче в BERT
+    чистка банковских контекстов и их подготовка к подаче в модель BERT
     """
     contexts = pd.read_csv(file_name, sep='\t')
     if tokenization:
@@ -111,7 +100,7 @@ def clean_banks_contexts(file_name, tokenization=False, tf_idf=False, find_entit
 
 def clean_telecom_contexts(file_name, tokenization=False, tf_idf=False, find_entity=False, mask_entity=False):
     """
-    чистка банковских контекстов и их подготовка к подаче в BERT
+    чистка банковских контекстов и их подготовка к подаче в модель BERT
     """
     contexts = pd.read_csv(file_name, sep='\t')
     if tokenization:
@@ -170,7 +159,7 @@ def multiply_sentences_with_several_entities(file_name):
 
 def calculate_delta():
     """
-    вычисление прироста по метрикам после предобучения на собранной выборке контекстов
+    вычисление прироста по метрикам после предобучения на собранной выборке тематических контекстов
     """
     operators_vanilla = np.array([[80.47, 72.59, 80.22, 66.95, 69.46],
                                   [82.28, 74.06, 81.24, 69.53, 71.76],
@@ -188,30 +177,15 @@ def calculate_delta():
     print(delta)
 
 
-def augmentation():
-    """
-    аугментация 4 различными способами:
-    -Замена n различных слов синонимами
-    -Вставка n различных синонимов в предложение
-    -N различных перестановок соседствующих слов в предложении
-    -Удаление n различных слов из предложения
-    """
-    mdl = Word2Vec.load('ruwikiruscorpora_upos_skipgram_300_2_2018.vec')
-    mdl = gensim.models.KeyedVectors.load_word2vec_format('ruscorpora_1_300_10.bin.gz', binary=True)
-    for n in mdl.most_similar(positive=['пожар_NOUN']):
-        print(n[0], n[1])
-
-
 def main():
-    # search_thematic_contexts(banks_or_operators='telecom')
-    # txt2csv('neutral_telecom_contexts_9.txt', 'neutral_telecom_contexts_9.csv')
-    # clean_banks_contexts('neutral_banks_contexts.csv', tokenization=True, tf_idf=True, find_entity=True,
-    #                     mask_entity=True)
-    # clean_telecom_contexts('neutral_telecom_multiplied.csv', tokenization=False, tf_idf=False, find_entity=False,
-    #                        mask_entity=True)
-    # multiply_sentences_with_several_entities('neutral_telecom_contexts_cleaned.csv')
-    # calculate_delta()
-    augmentation()
+    search_thematic_contexts(banks_or_operators='telecom')
+    txt2csv('neutral_telecom_contexts_9.txt', 'neutral_telecom_contexts_9.csv')
+    clean_banks_contexts('neutral_banks_contexts.csv', tokenization=True, tf_idf=True, find_entity=True,
+                         mask_entity=True)
+    clean_telecom_contexts('neutral_telecom_multiplied.csv', tokenization=False, tf_idf=False, find_entity=False,
+                           mask_entity=True)
+    multiply_sentences_with_several_entities('neutral_telecom_contexts_cleaned.csv')
+    calculate_delta()
 
 
 if __name__ == '__main__':

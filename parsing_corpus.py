@@ -6,7 +6,6 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
 import time
-# from pymystem3 import Mystem
 from string import punctuation
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,12 +15,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from numpy import dot
 from numpy.linalg import norm
 from sklearn.metrics.pairwise import cosine_similarity
-from spacy.lang.ru import Russian
 import pymorphy2
-# import rutokenizer
-# from deeppavlov import configs, build_model
-from nltk.tokenize import TweetTokenizer
-# from razdel import tokenize
 
 spacy.prefer_gpu()
 
@@ -32,13 +26,12 @@ def cosine_similarity_own(a, b):
 
 def reg_tokenize(text):
     """
-    вроде как быстрый токенизатор?
+    токенизатор на регулярках
     :param text:
     :return:
     """
     WORD = re.compile(r'\w+')
     words = WORD.findall(text)
-    # return ' '.join(words)
     return words
 
 
@@ -65,7 +58,6 @@ def mystem_tokenizer(text):
     punc_list = ' –!"@#$%^&*()*+_,.\:;<>=?[]{}|~`/«»—' + '0123456789'
     tokens = [token for token in tokens if token != " " and token.strip() not in set(punctuation + punc_list)]
 
-    # return tokens
     return ' '.join(tokens)
 
 
@@ -87,11 +79,6 @@ def pymorphy_tokenizer(text, tokenizer, morph, lemmatize: bool):
 def spacy_tokenizer(text, lemm: bool, nlp):
     """
     токенизатор на основе библиотеки spacy, учитывающий особенности русского языка
-    spacy_russian_tokenizer --- токенизация
-    spacy_ru2 --- лемматизация (как параметр)
-    стоп слова?
-    не всегда правильно работает (часто плохие леммы), надо разбираться -
-    в репо написано использовать ru2e, но не работает
     """
 
     nlp = spacy.load('/home/anton/PycharmProjects/spacy-ru/ru2e')
@@ -99,7 +86,6 @@ def spacy_tokenizer(text, lemm: bool, nlp):
     # nlp.add_pipe(nlp.create_pipe('sentencizer'), first=True)
     # doc = nlp(text)
 
-    # ВЗЯТЬ РУССКИЙ ТОКЕНИЗАТОР https://github.com/antongolubev5/spacy_russian_tokenizer
     # nlp = Russian()
     russian_tokenizer = RussianTokenizer(nlp, MERGE_PATTERNS)
     nlp.add_pipe(russian_tokenizer, name='russian_tokenizer')
@@ -248,7 +234,7 @@ def searching_contexts_csv(directory_path, entities_vocab, sentences_file, conte
     # corpus_sentences = pd.read_csv(os.path.join(directory_path, sentences_file), sep='\t')
     corpus_sentences = sentences_file
     contexts = pd.DataFrame(columns=['context', 'context_tokens'])
-
+    cnt = 0
     for i in tqdm(range(len(corpus_sentences))):
         line_tok = spacy_tokenizer(corpus_sentences.iloc[i][0], True)
         if any(word in entities_vocab for word in line_tok):
@@ -524,7 +510,6 @@ def create_balanced_samples(contexts_all, volumes, volume_neutral, top_words, dr
 
 def drop_same_sentences(contexts_all):
     """
-    почему-то разные типы кавычек и дефисов не почистились на этапе предобработки
     удаление одинаковых предложений с разными типами кавычек
     """
     cleaned_texts = contexts_all['text'].apply(lambda x: x.replace('«', '\"')).apply(
@@ -591,8 +576,7 @@ def from_raw_sentences_to_dataset(raw_data, entities_vocab):
 
 def drop_similar_contexts_tfidf(contexts_all):
     """
-    в выборке много перепечатанных и очень похожих контекстов
-    нужно прорядить ее одним из методов
+    удаление схожих и перепечатанных новостей из создаваемой выборки
     """
     set_tonal_words = set(contexts_all['tonal_word'])
     for tonal_word in tqdm(set_tonal_words):
@@ -612,11 +596,6 @@ def drop_similar_contexts_tfidf(contexts_all):
 def extract_neutral_contexts(directory_path):
     """
     извлечение нейтральных контекстов
-    Обрабатываем тексты системой извлечения именованных сущностей (deep pavlov), Пусть нас пока интересуют только персоны.
-    Смотрим на заголовки текстов и ищем такие заголовки, где упоминается персона и нет никаких оценочных слов из оценочного словаря.
-    Вообще никаких. Тогда можно предположить, что и в тексте тоже отношение к этой персоне нейтральное.
-    Берем первое предложение, где есть эта персона из заголовка в качестве нейтрального
-    (и здесь мы уже не обращаем внимание на наличие оценочных слов).
     """
     tonal_words = []
 
@@ -791,6 +770,9 @@ def extract_neutral_banks_telecoms_contexts(directory_path):
 
 
 def tweet_tokenizer(text, task):
+    """
+    полезный токенизатор для твитов
+    """
     text = text.lower()
     # for element in 'ё/,!':
     #     text = re.sub(element, ' ' + element + ' ', text)
@@ -916,7 +898,7 @@ def tweet_tokenizer(text, task):
 
 def create_semeval_dataset(directory_path, file_name):
     """
-    приведение данных из соревнования semeval к виду текущей постановки задачи
+    приведение данных из соревнования semeval к текущей постановке задачи
     :param directory_path: корневая директория
     :param file_name: имя csv-файла
     """
@@ -950,6 +932,9 @@ def create_semeval_dataset(directory_path, file_name):
 
 
 def simple_tokenizer(text):
+    """
+    простой токенизатор на регулярках
+    """
     text = text.lower()
     text = re.sub('\(\[\]\)', '', text)
     text = re.sub('\d\d:\d\d:\d\d', '', text)
