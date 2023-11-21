@@ -1,11 +1,11 @@
-import gensim
-from gensim.models import Word2Vec
+# import gensim
+# from gensim.models import Word2Vec
 
 from parsing_corpus import *
-import pandas as pd
-from tqdm import tqdm
+# import pandas as pd
+# from tqdm import tqdm
 import os
-from deeppavlov import configs, build_model
+# from deeppavlov import configs, build_model
 import warnings
 
 warnings.filterwarnings("ignore")
